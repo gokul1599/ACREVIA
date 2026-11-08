@@ -9,6 +9,7 @@
 
 - **Initial Crops:** Cotton (*Gossypium hirsutum*), Rice (*Oryza sativa*), Chilli (*Capsicum annuum*)
 - **Supported Languages:** Telugu (`te`), English (`en`), Hindi (`hi`)
+- **Frontend Architecture:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, PWA (Service Worker & Manifest)
 - **Backend Architecture:** Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16 + pgvector (Neon / SQLite fallback)
 - **ML / Inference Architecture:** PyTorch 2.15, MobileNetV3-Small/Large, ONNX Runtime, Int8 Quantization
 - **Knowledge / RAG Subsystem:** KrishiBrain (Structure-Aware Chunking, 1536d Deterministic & Cloud Embeddings, Hybrid Retrieval, CIBRC Safety Guardrails)
@@ -81,7 +82,10 @@ Interactive API documentation is accessible at `http://localhost:8000/docs`.
 # Run backend test suite (39 tests including KrishiBrain)
 python -m pytest backend/tests -v
 
-# Run entire repository test suite (104 tests)
+# Run frontend test suite (9 tests)
+npm test --prefix frontend
+
+# Run entire repository test suite (113 automated tests)
 python -m pytest tests/ml tests/api ml/inference_service/tests backend/tests -v
 ```
 
@@ -94,4 +98,5 @@ python -m pytest tests/ml tests/api ml/inference_service/tests backend/tests -v
 - **Stage 3 (Advanced CV, Uncertainty & Inference Engineering):** Complete (Verdict: PASSED WITH OPEN RISKS)
 - **Stage 4 (Enterprise Backend, Database, Auth & Multi-Tenancy):** Complete (Verdict: PASSED WITH OPEN RISKS)
 - **Stage 5 (KrishiBrain Multimodal RAG & Knowledge Engine):** Complete (Verdict: PASSED WITH OPEN RISKS)
+- **Stage 6 (Farmer Experience, Multilingual PWA & Voice):** Complete (Verdict: PASSED WITH OPEN RISKS)
 - **Stage 7 (RiskCast, Climate Risk, ExpertConnect & Interventions):** Next Scheduled Milestone (Weeks 13–14)

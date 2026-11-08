@@ -1,0 +1,28 @@
+{
+  "name": "ACREVIA — Agricultural Intelligence Platform",
+  "short_name": "ACREVIA",
+  "description": "Foliar crop disease diagnostics, KrishiBrain agricultural knowledge, and plant health monitoring for Cotton, Rice, and Chilli farmers.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F5F0",
+  "theme_color": "#1E3A2B",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

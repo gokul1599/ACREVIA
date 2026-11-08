@@ -27,6 +27,7 @@ data/exports/*
 *.jpeg
 *.png
 *.webp
+!frontend/public/icons/*.png
 *.tar.gz
 *.zip
 
