@@ -1,0 +1,29 @@
+version: "1.0.0"
+title: "KisanVision Crop Pathology Taxonomy Schema"
+description: "Validation schema for crop disease, pest, nutrient deficiency, and anomaly classes."
+
+allowed_categories:
+  - "A_HEALTHY"
+  - "B_DISEASE"
+  - "C_PEST"
+  - "D_NUTRIENT"
+  - "E_ABIOTIC"
+  - "F_UNKNOWN"
+  - "G_OTHER"
+
+allowed_verification_statuses:
+  - "AUTHORITATIVE_SOURCE_VERIFIED"
+  - "EXPERT_VALIDATED"
+  - "CANDIDATE_REQUIRES_REVIEW"
+  - "NOT_VERIFIED"
+  - "RETIRED"
+
+required_class_fields:
+  - class_id
+  - crop_id
+  - category
+  - scientific_name
+  - display_names
+  - agricultural_source
+  - verification_status
+  - requires_expert_review

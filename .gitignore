@@ -1,0 +1,76 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Datasets & Large Media (Never commit raw datasets or farmer photos)
+data/raw/*
+!data/raw/.gitkeep
+data/incoming/*
+!data/incoming/.gitkeep
+data/quarantined/*
+!data/quarantined/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.tar.gz
+*.zip
+
+# ML Checkpoints, Weights & Run Logs
+mlruns/
+mlflow.db
+*.db
+*.sqlite
+*.sqlite3
+*.pt
+*.pth
+*.onnx
+*.bin
+*.safetensors
+
+# Other Workspace Projects (Isolated repositories)
+aheadguard-mvp-starter/
+aheadguard-100-url-benchmark*
+anti gravity/
+open code/
+tabmind-ai/
+tap-house-20/
+teluguva/
+
+# Node.js & Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.wxt/
+.output/
+
+# Secrets & Environment Variables
+.env
+.env*.local
+*.key
+*.pem
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.vscode/
+.idea/

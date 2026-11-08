@@ -1,0 +1,116 @@
+crop: "chilli"
+scientific_name: "Capsicum annuum"
+vernacular_name_te: "మిరప"
+vernacular_name_hi: "मिर्च"
+taxonomy_version: "1.0.0"
+
+classes:
+  - class_id: "CHILLI_HEALTHY"
+    category: "A_HEALTHY"
+    scientific_name: "None"
+    display_names:
+      en: "Healthy Chilli Foliage"
+      te: "ఆరోగ్యకరమైన మిరప ఆకు"
+      hi: "स्वस्थ मिर्च का पत्ता"
+    symptom_description: "Smooth, deep green leaf lamina with flat margins and absence of mottling or rasping."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU Horticultural Guide"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "CHILLI_ANTHRACNOSE_FRUIT_ROT"
+    category: "B_DISEASE"
+    scientific_name: "Colletotrichum capsici"
+    display_names:
+      en: "Anthracnose / Fruit Rot / Die-Back"
+      te: "కొమ్మ ఎండు మరియు కాయ కుళ్ళు తెగులు"
+      hi: "एंथ्रेक्नोज / फल सड़न"
+    symptom_description: "Sunken circular necrotic spots on fruit with concentric rings of black acervuli; twig die-back from branch tips."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU / ICAR-IIHR Bulletin"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "CHILLI_LEAF_CURL_VIRUS"
+    category: "B_DISEASE"
+    scientific_name: "Begomovirus (Chilli Leaf Curl Virus)"
+    display_names:
+      en: "Chilli Leaf Curl Virus (ChiLCV)"
+      te: "బొబ్బర తెగులు / ఆకు ముడత వైరస్"
+      hi: "मिर्च पर्ण कुंचन विषाणु"
+    symptom_description: "Severe puckering, thickened veins, upward leaf curling, crowding of leaves at apex, stunted bush."
+    similar_looking_conditions:
+      - "CHILLI_BLACK_THRIPS"
+      - "CHILLI_YELLOW_MITE"
+    agricultural_source: "PJTSAU Virology Division"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "CHILLI_POWDERY_MILDEW"
+    category: "B_DISEASE"
+    scientific_name: "Leveillula taurica"
+    display_names:
+      en: "Powdery Mildew"
+      te: "బూడిద తెగులు"
+      hi: "चूर्णिल आसिता"
+    symptom_description: "White powdery patches on leaf underside with corresponding chlorotic yellow spots on upper surface."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU Horticultural Guide"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "CHILLI_CERCOSPORA_SPOT"
+    category: "B_DISEASE"
+    scientific_name: "Cercospora capsici"
+    display_names:
+      en: "Cercospora Leaf Spot (Frog-Eye)"
+      te: "సర్కోస్పోరా ఆకుమచ్చ తెగులు"
+      hi: "मेंढक-आंख धब्बा"
+    symptom_description: "Circular lesions with light grey or bleached white centers and prominent dark brown borders."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIHR Pathology Compendium"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "CHILLI_BLACK_THRIPS"
+    category: "C_PEST"
+    scientific_name: "Thrips parvispinus (Karny)"
+    display_names:
+      en: "Invasive Black Thrips Damage"
+      te: "నల్ల తామర పురుగు నష్టం"
+      hi: "काली थ्रिप्स क्षति"
+    symptom_description: "Upward boat-shaped leaf curling, rasping marks on flower petals and fruit, severe blossom drop."
+    similar_looking_conditions:
+      - "CHILLI_YELLOW_MITE"
+      - "CHILLI_LEAF_CURL_VIRUS"
+    agricultural_source: "ICAR-NBAIR / PJTSAU Alert 2022"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "CHILLI_YELLOW_MITE"
+    category: "C_PEST"
+    scientific_name: "Polyphagotarsonemus latus"
+    display_names:
+      en: "Yellow Mite Damage (Downward Curl)"
+      te: "నల్లి పురుగు నష్టం (ఎర్ర నల్లి)"
+      hi: "पीली माइट क्षति (नीचे की ओर मुड़ना)"
+    symptom_description: "Downward curling of margins (inverted boat shape), thick leathery brittle leaves, elongated petiole."
+    similar_looking_conditions:
+      - "CHILLI_BLACK_THRIPS"
+      - "CHILLI_LEAF_CURL_VIRUS"
+    agricultural_source: "PJTSAU Pest Compendium"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "CHILLI_UNKNOWN_CONDITION"
+    category: "F_UNKNOWN"
+    scientific_name: "Undetermined Etiology"
+    display_names:
+      en: "Undetermined Chilli Foliar Anomaly"
+      te: "నిర్ధారించబడని మిరప సమస్య"
+      hi: "अनिर्धारित लक्षण"
+    symptom_description: "Atypical foliar lesion or stress symptom requiring expert agronomist diagnosis."
+    similar_looking_conditions: []
+    agricultural_source: "KisanVision Safety Standard"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true

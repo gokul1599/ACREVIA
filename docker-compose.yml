@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database (Relational Store with pgvector readiness)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: acrevia_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-acrevia_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acrevia_dev_secret_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-acrevia_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - acrevia_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-acrevia_user} -d ${POSTGRES_DB:-acrevia_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acrevia_network
+
+  # ---------------------------------------------------------------------------
+  # ACREVIA Core Backend API Gateway (FastAPI)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: acrevia_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-acrevia_user}:${POSTGRES_PASSWORD:-acrevia_dev_secret_change_me}@postgres:5432/${POSTGRES_DB:-acrevia_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-insecure_default_dev_key_replace_in_production_32chars}
+      ML_INFERENCE_URL: http://ml-inference:8001
+      STORAGE_LOCAL_DIR: /app/data/storage
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - acrevia_media_storage:/app/data/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acrevia_network
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 ML Inference Microservice (Decoupled Computer Vision Engine)
+  # ---------------------------------------------------------------------------
+  ml-inference:
+    build:
+      context: .
+      dockerfile: ml/inference_service/Dockerfile
+    container_name: acrevia_ml_inference
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MODEL_PATH: /app/models/mobilenetv3_small.onnx
+      PORT: 8001
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acrevia_network
+
+volumes:
+  acrevia_postgres_data:
+    name: acrevia_postgres_data
+  acrevia_media_storage:
+    name: acrevia_media_storage
+
+networks:
+  acrevia_network:
+    name: acrevia_network
+    driver: bridge

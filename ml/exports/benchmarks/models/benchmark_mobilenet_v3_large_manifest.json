@@ -1,0 +1,36 @@
+{
+  "model_name": "benchmark_mobilenet_v3_large",
+  "architecture": "mobilenet_v3_large",
+  "crop_type": "benchmark",
+  "num_classes": 10,
+  "class_names": [
+    "class_0",
+    "class_1",
+    "class_2",
+    "class_3",
+    "class_4",
+    "class_5",
+    "class_6",
+    "class_7",
+    "class_8",
+    "class_9"
+  ],
+  "temperature": 1.0,
+  "input_resolution": [
+    224,
+    224
+  ],
+  "fp32_model": {
+    "path": "benchmark_mobilenet_v3_large_fp32.onnx",
+    "size_mb": 12.23,
+    "max_diff_vs_pytorch": 7.450580596923828e-09
+  },
+  "int8_model": {
+    "path": "benchmark_mobilenet_v3_large_int8.onnx",
+    "size_mb": 11.54,
+    "cosine_sim_vs_pytorch": 0.99996,
+    "top1_agreement": 1.0
+  },
+  "compression_ratio": 1.06,
+  "extra_metadata": {}
+}

@@ -1,0 +1,144 @@
+crop: "cotton"
+scientific_name: "Gossypium hirsutum"
+vernacular_name_te: "పత్తి"
+vernacular_name_hi: "कपास"
+taxonomy_version: "1.0.0"
+
+classes:
+  - class_id: "COTTON_HEALTHY"
+    category: "A_HEALTHY"
+    scientific_name: "None"
+    display_names:
+      en: "Healthy Cotton Foliage"
+      te: "ఆరోగ్యకరమైన పత్తి ఆకు"
+      hi: "स्वस्थ कपास का पत्ता"
+    symptom_description: "Vibrant green lamina with intact veins, absence of necrotic lesions, chlorosis, or insect chewing."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU Cotton Production Guide"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_BACTERIAL_BLIGHT"
+    category: "B_DISEASE"
+    scientific_name: "Xanthomonas citri pv. malvacearum"
+    display_names:
+      en: "Bacterial Blight / Angular Leaf Spot"
+      te: "బాక్టీరియా ఆకుమచ్చ తెగులు"
+      hi: "जीवाणु झुलसा / कोणीय पत्ती धब्बा"
+    symptom_description: "Small, angular, water-soaked lesions bounded by veinlets, turning reddish-brown to black."
+    similar_looking_conditions:
+      - "COTTON_ALTERNARIA_SPOT"
+    agricultural_source: "ICAR-CICR Technical Bulletin No. 24"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_GREY_MILDEW"
+    category: "B_DISEASE"
+    scientific_name: "Ramularia areola"
+    display_names:
+      en: "Grey Mildew / Areolate Mildew"
+      te: "బూజు తెగులు / తెల్ల బూజు తెగులు"
+      hi: "धूसर फफूंद"
+    symptom_description: "Angular pale translucent spots on upper leaf surface with powdery whitish fungal growth on underside."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU Vyavasaya Panchangam"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_ALTERNARIA_SPOT"
+    category: "B_DISEASE"
+    scientific_name: "Alternaria macrospora"
+    display_names:
+      en: "Alternaria Leaf Spot"
+      te: "ఆల్టర్నేరియా ఆకుమచ్చ తెగులు"
+      hi: "अल्टरनेरिया पत्ती धब्बा"
+    symptom_description: "Circular brown necrotic lesions with distinct target-like concentric rings."
+    similar_looking_conditions:
+      - "COTTON_BACTERIAL_BLIGHT"
+    agricultural_source: "ICAR-CICR Disease Manual"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_LEAF_CURL_VIRUS"
+    category: "B_DISEASE"
+    scientific_name: "Begomovirus (Cotton Leaf Curl Virus)"
+    display_names:
+      en: "Cotton Leaf Curl Virus (CLCuD)"
+      te: "ఆకు ముడత వైరస్ తెగులు"
+      hi: "कपास पत्ती मोड़ विषाणु"
+    symptom_description: "Upward leaf curling, thickened veins on abaxial surface, enations (leaf-like outgrowths)."
+    similar_looking_conditions:
+      - "COTTON_JASSID_DAMAGE"
+    agricultural_source: "ICAR-CICR Annual Report"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "COTTON_PINK_BOLLWORM"
+    category: "C_PEST"
+    scientific_name: "Pectinophora gossypiella"
+    display_names:
+      en: "Pink Bollworm Damage"
+      te: "గులాబీ రంగు పురుగు నష్టం"
+      hi: "गुलाबी सुंडी क्षति"
+    symptom_description: "Rosetted flowers, entry pinholes in green bolls with frass packing, internal seed feeding."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-CICR Pink Bollworm Protocol"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_JASSID_DAMAGE"
+    category: "C_PEST"
+    scientific_name: "Amrasca biguttula biguttula"
+    display_names:
+      en: "Leafhopper / Jassid Hopper Burn"
+      te: "పచ్చ దోమ నష్టం"
+      hi: "हरा फुदका क्षति"
+    symptom_description: "Downward curling of margins, marginal chlorosis turning brick red (hopper burn)."
+    similar_looking_conditions:
+      - "COTTON_LEAF_REDDENING"
+      - "COTTON_POTASSIUM_DEF"
+    agricultural_source: "PJTSAU Pest Management Guidelines"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "COTTON_POTASSIUM_DEF"
+    category: "D_NUTRIENT"
+    scientific_name: "Potassium (K) Deficit"
+    display_names:
+      en: "Potassium Deficiency"
+      te: "పొటాషియం లోపం"
+      hi: "पोटैशियम की कमी"
+    symptom_description: "Interveinal chlorosis starting on older leaves with marginal yellowing and bronze necrosis."
+    similar_looking_conditions:
+      - "COTTON_LEAF_REDDENING"
+    agricultural_source: "ICAR Soil Science Division"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "COTTON_LEAF_REDDENING"
+    category: "E_ABIOTIC"
+    scientific_name: "Physiological Anthocyanin Accumulation"
+    display_names:
+      en: "Physiological Leaf Reddening"
+      te: "పత్తి ఆకులు ఎర్రబడటం"
+      hi: "पत्तियों का लाल होना"
+    symptom_description: "Uniform bronze to dark red pigmentation triggered by sudden cold night temperatures and soil saturation."
+    similar_looking_conditions:
+      - "COTTON_JASSID_DAMAGE"
+      - "COTTON_POTASSIUM_DEF"
+    agricultural_source: "PJTSAU Agronomy Advisory"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "COTTON_UNKNOWN_CONDITION"
+    category: "F_UNKNOWN"
+    scientific_name: "Undetermined Etiology"
+    display_names:
+      en: "Undetermined Cotton Foliar Anomaly"
+      te: "నిర్ధారించబడని పత్తి సమస్య"
+      hi: "अनिर्धारित लक्षण"
+    symptom_description: "Atypical foliar lesion or stress symptom requiring expert agronomist diagnosis."
+    similar_looking_conditions: []
+    agricultural_source: "KisanVision Safety Standard"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true

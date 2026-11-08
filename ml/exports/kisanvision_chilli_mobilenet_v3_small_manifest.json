@@ -1,0 +1,34 @@
+{
+  "model_name": "kisanvision_chilli_mobilenet_v3_small",
+  "architecture": "mobilenet_v3_small",
+  "crop_type": "chilli",
+  "num_classes": 8,
+  "class_names": [
+    "CHILLI_HEALTHY",
+    "CHILLI_ANTHRACNOSE_FRUIT_ROT",
+    "CHILLI_LEAF_CURL_VIRUS",
+    "CHILLI_POWDERY_MILDEW",
+    "CHILLI_CERCOSPORA_SPOT",
+    "CHILLI_BLACK_THRIPS",
+    "CHILLI_YELLOW_MITE",
+    "CHILLI_UNKNOWN_CONDITION"
+  ],
+  "temperature": 1.0,
+  "input_resolution": [
+    224,
+    224
+  ],
+  "fp32_model": {
+    "path": "kisanvision_chilli_mobilenet_v3_small_fp32.onnx",
+    "size_mb": 4.1,
+    "max_diff_vs_pytorch": 3.725290298461914e-09
+  },
+  "int8_model": {
+    "path": "kisanvision_chilli_mobilenet_v3_small_int8.onnx",
+    "size_mb": 3.69,
+    "cosine_sim_vs_pytorch": 0.99982,
+    "top1_agreement": 1.0
+  },
+  "compression_ratio": 1.11,
+  "extra_metadata": {}
+}

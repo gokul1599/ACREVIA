@@ -1,0 +1,36 @@
+{
+  "model_name": "kisanvision_cotton_mobilenet_v3_small",
+  "architecture": "mobilenet_v3_small",
+  "crop_type": "cotton",
+  "num_classes": 10,
+  "class_names": [
+    "COTTON_HEALTHY",
+    "COTTON_BACTERIAL_BLIGHT",
+    "COTTON_GREY_MILDEW",
+    "COTTON_ALTERNARIA_SPOT",
+    "COTTON_LEAF_CURL_VIRUS",
+    "COTTON_PINK_BOLLWORM",
+    "COTTON_JASSID_DAMAGE",
+    "COTTON_POTASSIUM_DEF",
+    "COTTON_LEAF_REDDENING",
+    "COTTON_UNKNOWN_CONDITION"
+  ],
+  "temperature": 1.0,
+  "input_resolution": [
+    224,
+    224
+  ],
+  "fp32_model": {
+    "path": "kisanvision_cotton_mobilenet_v3_small_fp32.onnx",
+    "size_mb": 4.1,
+    "max_diff_vs_pytorch": 5.587935447692871e-09
+  },
+  "int8_model": {
+    "path": "kisanvision_cotton_mobilenet_v3_small_int8.onnx",
+    "size_mb": 3.69,
+    "cosine_sim_vs_pytorch": 0.9998,
+    "top1_agreement": 1.0
+  },
+  "compression_ratio": 1.11,
+  "extra_metadata": {}
+}

@@ -1,0 +1,192 @@
+{
+  "timestamp": "2026-11-07T23:13:29Z",
+  "host_environment": {
+    "device": "AMD Ryzen 5 5500U CPU",
+    "execution_provider": "CPUExecutionProvider",
+    "timed_iterations": 50,
+    "warmup_iterations": 5
+  },
+  "benchmarks": {
+    "mobilenet_v3_small": {
+      "architecture": "mobilenet_v3_small",
+      "parameters": {
+        "total_parameters": 1077803,
+        "trainable_parameters": 1077802,
+        "frozen_parameters": 1
+      },
+      "file_size": {
+        "fp32_onnx_mb": 4.1,
+        "int8_onnx_mb": 3.69,
+        "compression_ratio": 1.11
+      },
+      "latency": {
+        "pytorch_cpu": {
+          "mean_ms": 21.09,
+          "median_ms": 20.94,
+          "p95_ms": 23.78,
+          "p99_ms": 24.62,
+          "fps": 47.4
+        },
+        "onnx_fp32_cpu": {
+          "mean_ms": 3.17,
+          "median_ms": 3.07,
+          "p95_ms": 3.84,
+          "p99_ms": 4.08,
+          "fps": 315.5
+        },
+        "onnx_int8_cpu": {
+          "mean_ms": 3.26,
+          "median_ms": 3.02,
+          "p95_ms": 4.8,
+          "p99_ms": 7.34,
+          "fps": 307.0
+        }
+      },
+      "parity_vs_pytorch": {
+        "onnx_path": "ml\\exports\\benchmarks\\models\\benchmark_mobilenet_v3_small_int8.onnx",
+        "file_size_mb": 3.69,
+        "max_absolute_difference": 0.001056469976902008,
+        "mean_cosine_similarity": 0.9999,
+        "top1_agreement_rate": 1.0,
+        "verification_passed": true
+      },
+      "edge_compliant": true
+    },
+    "mobilenet_v3_large": {
+      "architecture": "mobilenet_v3_large",
+      "parameters": {
+        "total_parameters": 3221051,
+        "trainable_parameters": 3221050,
+        "frozen_parameters": 1
+      },
+      "file_size": {
+        "fp32_onnx_mb": 12.23,
+        "int8_onnx_mb": 11.54,
+        "compression_ratio": 1.06
+      },
+      "latency": {
+        "pytorch_cpu": {
+          "mean_ms": 42.62,
+          "median_ms": 39.02,
+          "p95_ms": 64.63,
+          "p99_ms": 94.4,
+          "fps": 23.5
+        },
+        "onnx_fp32_cpu": {
+          "mean_ms": 6.42,
+          "median_ms": 6.22,
+          "p95_ms": 8.04,
+          "p99_ms": 9.45,
+          "fps": 155.7
+        },
+        "onnx_int8_cpu": {
+          "mean_ms": 5.91,
+          "median_ms": 5.95,
+          "p95_ms": 6.29,
+          "p99_ms": 6.62,
+          "fps": 169.2
+        }
+      },
+      "parity_vs_pytorch": {
+        "onnx_path": "ml\\exports\\benchmarks\\models\\benchmark_mobilenet_v3_large_int8.onnx",
+        "file_size_mb": 11.54,
+        "max_absolute_difference": 0.0007140859961509705,
+        "mean_cosine_similarity": 0.99996,
+        "top1_agreement_rate": 1.0,
+        "verification_passed": true
+      },
+      "edge_compliant": true
+    },
+    "resnet18": {
+      "architecture": "resnet18",
+      "parameters": {
+        "total_parameters": 11310923,
+        "trainable_parameters": 11310922,
+        "frozen_parameters": 1
+      },
+      "file_size": {
+        "fp32_onnx_mb": 43.13,
+        "int8_onnx_mb": 42.75,
+        "compression_ratio": 1.01
+      },
+      "latency": {
+        "pytorch_cpu": {
+          "mean_ms": 58.62,
+          "median_ms": 57.93,
+          "p95_ms": 65.0,
+          "p99_ms": 77.27,
+          "fps": 17.1
+        },
+        "onnx_fp32_cpu": {
+          "mean_ms": 22.26,
+          "median_ms": 22.37,
+          "p95_ms": 23.27,
+          "p99_ms": 24.33,
+          "fps": 44.9
+        },
+        "onnx_int8_cpu": {
+          "mean_ms": 22.38,
+          "median_ms": 22.28,
+          "p95_ms": 23.97,
+          "p99_ms": 25.41,
+          "fps": 44.7
+        }
+      },
+      "parity_vs_pytorch": {
+        "onnx_path": "ml\\exports\\benchmarks\\models\\benchmark_resnet18_int8.onnx",
+        "file_size_mb": 42.75,
+        "max_absolute_difference": 0.07269991934299469,
+        "mean_cosine_similarity": 0.99797,
+        "top1_agreement_rate": 1.0,
+        "verification_passed": true
+      },
+      "edge_compliant": false
+    },
+    "efficientnet_b0": {
+      "architecture": "efficientnet_b0",
+      "parameters": {
+        "total_parameters": 4338567,
+        "trainable_parameters": 4338566,
+        "frozen_parameters": 1
+      },
+      "file_size": {
+        "fp32_onnx_mb": 16.46,
+        "int8_onnx_mb": 15.54,
+        "compression_ratio": 1.06
+      },
+      "latency": {
+        "pytorch_cpu": {
+          "mean_ms": 58.43,
+          "median_ms": 58.5,
+          "p95_ms": 64.68,
+          "p99_ms": 69.98,
+          "fps": 17.1
+        },
+        "onnx_fp32_cpu": {
+          "mean_ms": 15.18,
+          "median_ms": 14.05,
+          "p95_ms": 21.46,
+          "p99_ms": 36.39,
+          "fps": 65.9
+        },
+        "onnx_int8_cpu": {
+          "mean_ms": 15.11,
+          "median_ms": 14.85,
+          "p95_ms": 17.7,
+          "p99_ms": 19.2,
+          "fps": 66.2
+        }
+      },
+      "parity_vs_pytorch": {
+        "onnx_path": "ml\\exports\\benchmarks\\models\\benchmark_efficientnet_b0_int8.onnx",
+        "file_size_mb": 15.54,
+        "max_absolute_difference": 0.0009069480001926422,
+        "mean_cosine_similarity": 0.99996,
+        "top1_agreement_rate": 1.0,
+        "verification_passed": true
+      },
+      "edge_compliant": false
+    }
+  },
+  "markdown_summary": "# KisanVision Edge Vision Architecture Benchmark Summary\n\n| Architecture | Total Params | FP32 Size | INT8 Size | Compression | INT8 p50 (ms) | INT8 p95 (ms) | INT8 FPS | Edge Compliant (<200ms, <15MB) |\n| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n| `mobilenet_v3_small` | 1,077,803 | 4.1 MB | 3.69 MB | 1.11x | 3.02 ms | 4.8 ms | 307.0 | **PASSED** |\n| `mobilenet_v3_large` | 3,221,051 | 12.23 MB | 11.54 MB | 1.06x | 5.95 ms | 6.29 ms | 169.2 | **PASSED** |\n| `resnet18` | 11,310,923 | 43.13 MB | 42.75 MB | 1.01x | 22.28 ms | 23.97 ms | 44.7 | **EXCEEDS_BUDGET** |\n| `efficientnet_b0` | 4,338,567 | 16.46 MB | 15.54 MB | 1.06x | 14.85 ms | 17.7 ms | 66.2 | **EXCEEDS_BUDGET** |\n"
+}

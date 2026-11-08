@@ -1,0 +1,22 @@
+experiment_name: "kisanvision_baseline_mobilenetv3"
+experiment_version: "v0.1.0"
+model:
+  architecture: "mobilenet_v3_small"
+  pretrained: false
+  num_classes: 10
+  dropout_rate: 0.2
+  input_resolution: [224, 224]
+
+training:
+  batch_size: 8
+  epochs: 3
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  random_seed: 42
+  device: "cpu"
+  early_stopping_patience: 3
+  checkpoint_dir: "data/models/checkpoints"
+
+dataset:
+  manifest_path: "data/splits/synthetic_smoke_test_split.json"
+  target_crop: "cotton"

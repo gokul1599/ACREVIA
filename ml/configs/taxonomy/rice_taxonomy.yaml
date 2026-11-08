@@ -1,0 +1,140 @@
+crop: "rice"
+scientific_name: "Oryza sativa"
+vernacular_name_te: "వరి"
+vernacular_name_hi: "धान"
+taxonomy_version: "1.0.0"
+
+classes:
+  - class_id: "RICE_HEALTHY"
+    category: "A_HEALTHY"
+    scientific_name: "None"
+    display_names:
+      en: "Healthy Rice Foliage"
+      te: "ఆరోగ్యకరమైన వరి ఆకు"
+      hi: "स्वस्थ धान का पत्ता"
+    symptom_description: "Uniform emerald green leaf blade without spots, stripes, or tip drying."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIRR Hyderabad"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_BLAST_LEAF"
+    category: "B_DISEASE"
+    scientific_name: "Magnaporthe oryzae (Pyricularia oryzae)"
+    display_names:
+      en: "Leaf Blast"
+      te: "ఆకు అగ్గి తెగులు"
+      hi: "धान का पत्ती झुलसा रोग"
+    symptom_description: "Spindle-shaped elliptical lesions with greyish-white center and distinct reddish-brown borders."
+    similar_looking_conditions:
+      - "RICE_BROWN_SPOT"
+    agricultural_source: "ICAR-IIRR Technical Bulletin No. 89"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_BACTERIAL_BLIGHT"
+    category: "B_DISEASE"
+    scientific_name: "Xanthomonas oryzae pv. oryzae"
+    display_names:
+      en: "Bacterial Leaf Blight (BLB)"
+      te: "బాక్టీరియా ఆకు ఎండు తెగులు"
+      hi: "जीवाणु पत्ती झुलसा"
+    symptom_description: "Water-soaked yellowish-white wavy marginal stripes beginning at leaf tips and advancing along leaf blade."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIRR Standard Evaluation System"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_SHEATH_BLIGHT"
+    category: "B_DISEASE"
+    scientific_name: "Rhizoctonia solani"
+    display_names:
+      en: "Sheath Blight"
+      te: "వరి పొడ తెగులు"
+      hi: "शीथ ब्लाइट"
+    symptom_description: "Oval or irregular greenish-grey water-soaked spots on leaf sheaths near water line forming banded snake-skin appearance."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIRR Pathology Compendium"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_BROWN_SPOT"
+    category: "B_DISEASE"
+    scientific_name: "Bipolaris oryzae"
+    display_names:
+      en: "Brown Spot"
+      te: "గోధుమ రంగు మచ్చ తెగులు"
+      hi: "भूरा धब्बा रोग"
+    symptom_description: "Small oval to circular brown spots resembling sesame seeds with yellow chlorotic halo."
+    similar_looking_conditions:
+      - "RICE_BLAST_LEAF"
+      - "RICE_ZINC_DEFICIENCY"
+    agricultural_source: "PJTSAU Rice Guide"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_FALSE_SMUT"
+    category: "B_DISEASE"
+    scientific_name: "Ustilaginoidea virens"
+    display_names:
+      en: "False Smut"
+      te: "కాటుక తెగులు / పసుపు ముద్ద తెగులు"
+      hi: "झूठा कंडुआ"
+    symptom_description: "Individual grains transformed into velvety, yellowish-green to greenish-black spore balls."
+    similar_looking_conditions: []
+    agricultural_source: "PJTSAU Rice Compendium"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_STEM_BORER_DEADHEART"
+    category: "C_PEST"
+    scientific_name: "Scirpophaga incertulas"
+    display_names:
+      en: "Yellow Stem Borer (Dead Heart)"
+      te: "కాండం తొలుచు పురుగు (మొగి పురుగు)"
+      hi: "तना छेदक (मृत दिल)"
+    symptom_description: "Central shoot dries and turns brown in vegetative stage (dead heart); white erect panicles at reproductive stage."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIRR Entomology Handbook"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: false
+
+  - class_id: "RICE_BPH_HOPPERBURN"
+    category: "C_PEST"
+    scientific_name: "Nilaparvata lugens"
+    display_names:
+      en: "Brown Planthopper (Hopper Burn)"
+      te: "సుడి దోమ నష్టం"
+      hi: "भूरा फुदका (हॉपर बर्न)"
+    symptom_description: "Circular patches of dried, yellowish-brown lodged tillers starting at field center."
+    similar_looking_conditions: []
+    agricultural_source: "ICAR-IIRR BPH Management Protocol"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "RICE_ZINC_DEFICIENCY"
+    category: "D_NUTRIENT"
+    scientific_name: "Zinc (Zn) Micronutrient Deficit"
+    display_names:
+      en: "Zinc Deficiency (Khaira Disease)"
+      te: "జింక్ లోపం (ఖైరా తెగులు)"
+      hi: "जिंक की कमी (खैरा रोग)"
+    symptom_description: "Uneven growth, chlorosis at base of young leaves followed by rusty brown pigmentation."
+    similar_looking_conditions:
+      - "RICE_BROWN_SPOT"
+    agricultural_source: "ICAR-IIRR Soil Science Division"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true
+
+  - class_id: "RICE_UNKNOWN_CONDITION"
+    category: "F_UNKNOWN"
+    scientific_name: "Undetermined Etiology"
+    display_names:
+      en: "Undetermined Rice Foliar Anomaly"
+      te: "నిర్ధారించబడని వరి సమస్య"
+      hi: "अनिर्धारित लक्षण"
+    symptom_description: "Atypical foliar lesion or stress symptom requiring expert agronomist diagnosis."
+    similar_looking_conditions: []
+    agricultural_source: "KisanVision Safety Standard"
+    verification_status: "AUTHORITATIVE_SOURCE_VERIFIED"
+    requires_expert_review: true

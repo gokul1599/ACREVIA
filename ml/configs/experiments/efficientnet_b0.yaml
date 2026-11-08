@@ -1,0 +1,24 @@
+experiment_name: "kisanvision_comparative_efficientnet_b0"
+experiment_version: "1.0.0"
+model:
+  architecture: "efficientnet_b0"
+  type: "single_crop"
+  pretrained: true
+  dropout_rate: 0.2
+  input_resolution: [224, 224]
+
+training:
+  batch_size: 16
+  num_workers: 2
+  max_epochs: 35
+  learning_rate: 0.0002
+  weight_decay: 0.00001
+  optimizer: "AdamW"
+  scheduler: "ReduceLROnPlateau"
+  loss_function: "CrossEntropyLoss"
+  early_stopping_patience: 5
+
+edge_budget:
+  max_latency_ms: 200.0
+  max_model_size_mb: 15.0
+  quantization: "INT8_DYNAMIC"

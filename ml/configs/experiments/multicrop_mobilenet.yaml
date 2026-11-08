@@ -1,0 +1,30 @@
+experiment_name: "kisanvision_multicrop_mobilenet_v3_small"
+experiment_version: "1.0.0"
+model:
+  architecture: "mobilenet_v3_small"
+  type: "multi_crop_hierarchical"
+  pretrained: true
+  dropout_rate: 0.2
+  crops:
+    cotton: 10
+    rice: 10
+    chilli: 8
+  input_resolution: [224, 224]
+
+training:
+  batch_size: 32
+  num_workers: 2
+  max_epochs: 40
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  optimizer: "AdamW"
+  scheduler: "CosineAnnealingLR"
+  loss_function: "FocalLoss"
+  focal_gamma: 2.0
+  label_smoothing: 0.1
+  early_stopping_patience: 6
+
+edge_budget:
+  max_latency_ms: 200.0
+  max_model_size_mb: 15.0
+  quantization: "INT8_DYNAMIC"
