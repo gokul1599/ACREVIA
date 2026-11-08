@@ -65,6 +65,7 @@ class RateLimitExceededException(AcreviaException):
             status_code=429,
             details={"retry_after_seconds": retry_after}
         )
+        self.retry_after = retry_after
 
 
 # Convenient Aliases for Service Layer Consistency

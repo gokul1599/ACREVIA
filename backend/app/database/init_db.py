@@ -161,13 +161,60 @@ def _seed_data(session: Session):
     KnowledgeGraphService.seed_initial_knowledge_graph(session)
 
 
-def init_db(engine_or_session=None, session_factory=None):
-    """Creates tables if not existing and seeds baseline roles, crops, and risk rules."""
+def check_db_readiness(engine_instance=None) -> dict:
+    """
+    Validates database connectivity and schema readiness without mutating schema.
+    Returns status dictionary with version and table count.
+    """
+    from sqlalchemy import text, inspect
+    eng = engine_instance or default_engine
+    readiness = {
+        "connected": False,
+        "alembic_version": None,
+        "table_count": 0,
+        "is_ready": False,
+        "error": None
+    }
+    try:
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            readiness["connected"] = True
+
+            insp = inspect(eng)
+            tables = insp.get_table_names()
+            readiness["table_count"] = len(tables)
+
+            if "alembic_version" in tables:
+                res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+                if res:
+                    readiness["alembic_version"] = res[0]
+                    readiness["is_ready"] = True
+            else:
+                readiness["error"] = "alembic_version table not found. Schema must be provisioned via 'alembic upgrade head'."
+    except Exception as e:
+        readiness["error"] = str(e)
+
+    return readiness
+
+
+def init_db(engine_or_session=None, session_factory=None, create_tables: bool = False):
+    """
+    Initializes baseline seed data.
+    Does NOT execute create_all() unless create_tables is explicitly True (test/ephemeral environments).
+    Production environments must rely on Alembic migrations for all schema evolution.
+    """
     if isinstance(engine_or_session, Session):
         _seed_data(engine_or_session)
     else:
         eng = engine_or_session or default_engine
-        Base.metadata.create_all(bind=eng)
-        factory = session_factory or default_session_factory
+        if create_tables:
+            Base.metadata.create_all(bind=eng)
+        if session_factory:
+            factory = session_factory
+        elif engine_or_session:
+            from sqlalchemy.orm import sessionmaker
+            factory = sessionmaker(autocommit=False, autoflush=False, bind=eng)
+        else:
+            factory = default_session_factory
         with factory() as session:
             _seed_data(session)

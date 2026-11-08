@@ -74,6 +74,12 @@ class Settings(BaseModel):
     )
     ML_INFERENCE_TIMEOUT_SECONDS: float = 10.0
 
+    # Distributed Rate Limiting & Redis Configuration
+    REDIS_URL: Optional[str] = Field(default_factory=lambda: os.getenv("REDIS_URL", None))
+    RATE_LIMIT_ENABLED: bool = Field(default_factory=lambda: os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true")
+    RATE_LIMIT_FAIL_MODE: str = Field(default_factory=lambda: os.getenv("RATE_LIMIT_FAIL_MODE", "fail_open"))  # "fail_open" or "fail_closed"
+    RATE_LIMIT_NAMESPACE: str = Field(default_factory=lambda: os.getenv("RATE_LIMIT_NAMESPACE", "acrevia"))
+
     # Agricultural Scope
     TARGET_GEOGRAPHY: str = "Telangana, India"
     SUPPORTED_CROPS: List[str] = ["cotton", "rice", "chilli"]

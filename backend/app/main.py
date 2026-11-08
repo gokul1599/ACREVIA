@@ -17,7 +17,7 @@ from backend.app.core.config import settings
 from backend.app.core.logging import logger
 from backend.app.core.exceptions import AcreviaException
 from backend.app.database.session import engine, SessionLocal
-from backend.app.database.init_db import init_db
+from backend.app.database.init_db import init_db, check_db_readiness
 from backend.app.api.v1.router import api_v1_router
 
 
@@ -27,10 +27,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Application startup and shutdown lifecycle management.
     """
     logger.info("Initializing ACREVIA Backend Application...")
-    # Initialize database seed data
+    # Validate database schema readiness via Alembic version check without mutating production schema
+    readiness = check_db_readiness(engine)
+    if readiness["is_ready"]:
+        logger.info(f"ACREVIA database schema verified ready at Alembic revision {readiness['alembic_version']} ({readiness['table_count']} tables).")
+    else:
+        logger.warning(f"Database readiness advisory: {readiness.get('error', 'Unverified schema state')}")
+
+    # Seed baseline roles and taxonomies into managed schema
     try:
-        init_db()
-        logger.info("ACREVIA database seeded and verified successfully.")
+        init_db(create_tables=False)
+        logger.info("ACREVIA database seed data verified successfully.")
     except Exception as e:
         logger.error(f"Database initialization warning: {e}")
 
