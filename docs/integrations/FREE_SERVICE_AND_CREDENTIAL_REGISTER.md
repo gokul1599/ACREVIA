@@ -25,7 +25,7 @@ All external service integrations are governed by five non-negotiable principles
 | :-: | :--- | :--- | :--- | :---: | :---: | :---: |
 | **1** | **GroqCloud** | High-speed AI inference for KrishiBrain RAG | `GROQ_API_KEY`<br>`GROQ_MODEL` | **YES** | **YES** (HTTP 200, 0.6s latency) | **`COMPLETE_VERIFIED`** |
 | **2** | **Neon PostgreSQL** | Primary relational & vector database | `DATABASE_URL` | **YES** | **YES** (PostgreSQL 18.6, 133 tables) | **`COMPLETE_VERIFIED`** |
-| **3** | **Upstash Redis** | Distributed atomic rate limiting | `REDIS_URL`<br>`RATE_LIMIT_*` | **OPTIONAL** (In-Memory active) | **YES** (TLS parsing & In-Memory verified) | **`COMPLETE_VERIFIED`** |
+| **3** | **Upstash Redis** | Distributed atomic rate limiting | `REDIS_URL`<br>`RATE_LIMIT_*` | **YES** (Upstash TLS) | **YES** (Upstash Redis 8.4.0 PING & Pipeline passed) | **`COMPLETE_VERIFIED`** |
 | **4** | **Copernicus CDSE** | Sentinel-2 satellite Earth observation | `COPERNICUS_CLIENT_ID`<br>`COPERNICUS_CLIENT_SECRET` | **NO** (Public search only) | **YES** (Public OData search passed; auth gated) | **`BLOCKED_MISSING_CREDENTIAL`** |
 | **5** | **Hugging Face** | Open-weight model & dataset hub | `HF_TOKEN` (Optional) | **YES** (`k12gokul`) | **YES** (HTTP 200 whoami & model metadata) | **`COMPLETE_VERIFIED`** |
 | **6** | **Open-Meteo** | Agrometeorological historical & forecast | `OPEN_METEO_API_URL` (No key) | **N/A** (Open Public) | **YES** (HTTP 200, live 23.6°C Warangal) | **`COMPLETE_VERIFIED`** |
@@ -89,8 +89,10 @@ All external service integrations are governed by five non-negotiable principles
   - Storage: 256 MB max memory.
   - Concurrency: 100 concurrent TCP connections.
 - **Credential Verification:**
-  - Upstash TLS format (`rediss://`) and connection pooling verified with mock client.
-  - In-memory thread-safe sliding window active when `REDIS_URL` is omitted.
+  - Real Upstash Redis instance verified via TLS (`rediss://...upstash.io:6379`).
+  - Remote PING returned `True`, Redis server version 8.4.0 verified.
+  - Live atomic sliding-window `check_rate_limit` execution (ZREMRANGEBYSCORE, ZCARD, ZADD, EXPIRE) and probe key cleanup verified live.
+  - In-memory thread-safe sliding window serves as automatic fallback if connection is interrupted.
 - **Failure & Quota Handling:**
   - If Redis connection times out or daily quota is exceeded, `fail_open=True` logs the event and permits farmer requests.
   - Automatic sliding-window TTLs (`EXPIRE key window+5s`) guarantee memory stays $< 5\text{ MB}$.

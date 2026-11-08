@@ -102,10 +102,27 @@ async def get_integration_status() -> Dict[str, Any]:
 
     # 4. Redis / Upstash Distributed Rate Limiting
     is_upstash = bool(settings.REDIS_URL and "upstash" in settings.REDIS_URL.lower())
+    redis_status = "IN_MEMORY_FALLBACK"
+    redis_latency_ms = None
+    if settings.REDIS_URL:
+        try:
+            import redis
+            r_url = settings.REDIS_URL
+            if r_url.startswith("redis://") and "upstash.io" in r_url:
+                r_url = "rediss://" + r_url[len("redis://"):]
+            t0 = time.time()
+            r_client = redis.Redis.from_url(r_url, socket_timeout=2.5)
+            if r_client.ping():
+                redis_status = "CONFIGURED"
+                redis_latency_ms = round((time.time() - t0) * 1000, 1)
+        except Exception:
+            redis_status = "DEGRADED_FALLBACK"
+
     redis_health = {
-        "status": "CONFIGURED" if settings.REDIS_URL else "IN_MEMORY_FALLBACK",
+        "status": redis_status if settings.REDIS_URL else "IN_MEMORY_FALLBACK",
         "provider": "Upstash Redis" if is_upstash else ("Redis Managed" if settings.REDIS_URL else "InMemory Sliding-Window"),
-        "tls_enforced": bool(settings.REDIS_URL and settings.REDIS_URL.startswith("rediss://")),
+        "tls_enforced": bool(settings.REDIS_URL and (settings.REDIS_URL.startswith("rediss://") or "upstash.io" in settings.REDIS_URL)),
+        "latency_ms": redis_latency_ms,
         "fail_mode": settings.RATE_LIMIT_FAIL_MODE,
         "free_tier": True
     }

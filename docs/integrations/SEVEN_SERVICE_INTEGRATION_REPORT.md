@@ -74,8 +74,8 @@ In strict adherence to security directives, secret values are never printed. The
 | Neon PostgreSQL      | Connected (133 tbl)| 2,640 ms      | Real Live   | PostgreSQL 18.6 in AWS sin1;  |
 |                      |                    |               |             | pgvector active; 0 DDL on boot|
 +----------------------+--------------------+---------------+-------------+-------------------------------+
-| Upstash Redis        | Verified Parsing   | < 1 ms (mem)  | Mock & Mem  | rediss:// TLS format verified;|
-|                      |                    |               |             | In-memory sliding window active|
+| Upstash Redis        | PING -> True       | 350 ms        | Real Live   | Upstash Redis 8.4.0 verified; |
+|                      |                    |               |             | TLS encrypted sliding-window  |
 +----------------------+--------------------+---------------+-------------+-------------------------------+
 | Copernicus CDSE      | HTTP 200 OK        | 1,210 ms      | Real Public | OData public catalogue active;|
 |                      |                    |               |             | OAuth gated on credentials    |
@@ -100,16 +100,16 @@ In strict adherence to scientific truthfulness, real network tests and mock test
 ### 5.1 Verified with Real Provider Credentials (LIVE):
 1. **GroqCloud:** Real inference call to `https://api.groq.com/openai/v1/chat/completions` using user API key returned HTTP 200 with generated completion tokens.
 2. **Neon PostgreSQL:** Real SSL connection to `ep-muddy-mode-a1nd6rrb-pooler.ap-southeast-1.aws.neon.tech/neondb` returned scalar `1` and verified 133 tables.
-3. **Hugging Face Hub:** Real authentication call to `https://huggingface.co/api/whoami-v2` confirmed user `k12gokul`; real public model card lookup on `sentence-transformers/all-MiniLM-L6-v2` returned HTTP 200.
-4. **Open-Meteo:** Real API call to `https://api.open-meteo.com/v1/forecast` returned live temperature and humidity for Warangal.
-5. **Copernicus CDSE:** Real public query to `https://catalogue.dataspace.copernicus.eu/odata/v1/Products` returned HTTP 200 and Sentinel product names.
-6. **data.gov.in:** Real API call to `https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070` using User-Agent header returned live wholesale mandi records for Telangana in 500ms.
+3. **Upstash Redis:** Real TLS connection to `blessed-walleye-135278.upstash.io:6379` confirmed Redis 8.4.0 PING, atomic sliding-window `ZADD`/`ZCARD` pipeline, and automatic key expiration.
+4. **Hugging Face Hub:** Real authentication call to `https://huggingface.co/api/whoami-v2` confirmed user `k12gokul`; real public model card lookup on `sentence-transformers/all-MiniLM-L6-v2` returned HTTP 200.
+5. **Open-Meteo:** Real API call to `https://api.open-meteo.com/v1/forecast` returned live temperature and humidity for Warangal.
+6. **Copernicus CDSE:** Real public query to `https://catalogue.dataspace.copernicus.eu/odata/v1/Products` returned HTTP 200 and Sentinel product names.
+7. **data.gov.in:** Real API call to `https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070` using User-Agent header returned live wholesale mandi records for Telangana in 500ms.
 
 ### 5.2 Verified via Mock / Unit Tests:
-1. **Upstash Redis:** TLS connection URL parsing (`rediss://...`) verified with mocked `redis.Redis.from_url`; in-memory sliding-window counter verified natively.
-2. **Copernicus OAuth Client Credentials:** Token acquisition, expiry calculation, and cache reuse verified with mocked OAuth token response.
-3. **Groq HTTP 429 Backoff:** Throttling behavior and `Retry-After` header extraction verified with mocked HTTP 429 response.
-4. **data.gov.in Normalization:** Agmarknet JSON record parsing, provenance tagging, and non-fabrication principles verified with mocked API response.
+1. **Copernicus OAuth Client Credentials:** Token acquisition, expiry calculation, and cache reuse verified with mocked OAuth token response.
+2. **Groq HTTP 429 Backoff:** Throttling behavior and `Retry-After` header extraction verified with mocked HTTP 429 response.
+3. **data.gov.in Normalization:** Agmarknet JSON record parsing, provenance tagging, and non-fabrication principles verified with mocked API response.
 
 ---
 

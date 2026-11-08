@@ -137,7 +137,10 @@ class RedisRateLimiterBackend(RateLimiterBackend):
     Guarantees shared counter consistency across multi-replica FastAPI worker nodes.
     """
 
-    def __init__(self, redis_url: str, connection_timeout_seconds: float = 1.0) -> None:
+    def __init__(self, redis_url: str, connection_timeout_seconds: float = 2.5) -> None:
+        if redis_url and redis_url.startswith("redis://") and "upstash.io" in redis_url:
+            # Upstash endpoints require SSL/TLS transport (rediss:// scheme)
+            redis_url = "rediss://" + redis_url[len("redis://"):]
         self.redis_url = redis_url
         self.timeout = connection_timeout_seconds
         self._client = None
