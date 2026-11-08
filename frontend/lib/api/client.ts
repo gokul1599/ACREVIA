@@ -21,6 +21,16 @@ import type {
   InterventionRecord,
   OutcomeObservation,
   InterventionTimeline,
+  PlotGeometry,
+  LocationPermission,
+  SatelliteTimeSeries,
+  SensorDevice,
+  SensorPlotTelemetryHistory,
+  FusionExplanation,
+  HarvestMeasurement,
+  YieldForecastResponse,
+  KnowledgeEntity,
+  KnowledgeTraversalResponse,
 } from "./types.ts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -488,6 +498,88 @@ class ApiClient {
     status: string;
   }> {
     return this.request("/system/observability");
+  }
+
+  // ==========================================
+  // STAGE 9: PRECISION AGRICULTURE & INTELLIGENCE
+  // ==========================================
+
+  async savePlotGeometry(plotId: string, coordinates: number[][][]): Promise<PlotGeometry> {
+    return this.request<PlotGeometry>(`/geospatial/plots/${plotId}/geometry`, {
+      method: "POST",
+      body: JSON.stringify({ type: "Polygon", coordinates }),
+    });
+  }
+
+  async getPlotGeometry(plotId: string): Promise<PlotGeometry> {
+    return this.request<PlotGeometry>(`/geospatial/plots/${plotId}/geometry`);
+  }
+
+  async updateLocationPermission(
+    farmId: string,
+    granularity: "EXACT_BOUNDARY" | "COARSE_VILLAGE" | "REVOKED",
+    notes?: string
+  ): Promise<LocationPermission> {
+    return this.request<LocationPermission>(`/geospatial/farms/${farmId}/permissions`, {
+      method: "POST",
+      body: JSON.stringify({ granularity, notes }),
+    });
+  }
+
+  async getSatelliteTimeSeries(plotId: string, days = 60): Promise<SatelliteTimeSeries> {
+    return this.request<SatelliteTimeSeries>(`/satellite/plots/${plotId}/time-series?days=${days}`);
+  }
+
+  async getLatestSatelliteObservation(plotId: string): Promise<any> {
+    return this.request(`/satellite/plots/${plotId}/latest`);
+  }
+
+  async registerSensorDevice(
+    farmId: string,
+    data: { device_serial_number: string; device_category: string; plot_id?: string; firmware_version?: string }
+  ): Promise<SensorDevice> {
+    return this.request<SensorDevice>(`/sense/farms/${farmId}/devices`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listFarmSensorDevices(farmId: string): Promise<SensorDevice[]> {
+    return this.request<SensorDevice[]>(`/sense/farms/${farmId}/devices`);
+  }
+
+  async getPlotSensorTelemetry(plotId: string, hours = 48): Promise<SensorPlotTelemetryHistory> {
+    return this.request<SensorPlotTelemetryHistory>(`/sense/plots/${plotId}/telemetry?hours=${hours}`);
+  }
+
+  async getPlotFusionAssessment(plotId: string): Promise<FusionExplanation> {
+    return this.request<FusionExplanation>(`/fusion/plots/${plotId}/assessment`);
+  }
+
+  async recordHarvestMeasurement(
+    plotId: string,
+    data: {
+      season_id: string;
+      harvest_date: string;
+      yield_quintals_per_acre: number;
+      total_harvest_kg: number;
+      provenance_tier: string;
+      verification_document_url?: string;
+      notes?: string;
+    }
+  ): Promise<HarvestMeasurement> {
+    return this.request<HarvestMeasurement>(`/predict/plots/${plotId}/harvests`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getYieldForecast(plotId: string, threshold = 50): Promise<YieldForecastResponse> {
+    return this.request<YieldForecastResponse>(`/predict/plots/${plotId}/forecast?threshold=${threshold}`);
+  }
+
+  async traverseKnowledgeGraph(entity: string): Promise<KnowledgeTraversalResponse> {
+    return this.request<KnowledgeTraversalResponse>(`/knowledge-graph/traverse?entity=${encodeURIComponent(entity)}`);
   }
 }
 

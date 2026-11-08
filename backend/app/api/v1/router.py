@@ -20,6 +20,14 @@ from backend.app.api.v1.endpoints.riskcast import router as riskcast_router
 from backend.app.api.v1.endpoints.expertconnect import router as expertconnect_router
 from backend.app.api.v1.endpoints.interventions import router as interventions_router
 
+# Stage 9 Routers (Phase II Precision Agriculture)
+from backend.app.api.v1.endpoints.geospatial import router as geospatial_router
+from backend.app.api.v1.endpoints.satellite import router as satellite_router
+from backend.app.api.v1.endpoints.sense import router as sense_router
+from backend.app.api.v1.endpoints.fusion import router as fusion_router
+from backend.app.api.v1.endpoints.predict import router as predict_router
+from backend.app.api.v1.endpoints.knowledge_graph import router as knowledge_graph_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -36,3 +44,11 @@ api_v1_router.include_router(knowledge_router)
 api_v1_router.include_router(riskcast_router)
 api_v1_router.include_router(expertconnect_router)
 api_v1_router.include_router(interventions_router)
+
+# Stage 9 Routes
+api_v1_router.include_router(geospatial_router)
+api_v1_router.include_router(satellite_router)
+api_v1_router.include_router(sense_router)
+api_v1_router.include_router(fusion_router)
+api_v1_router.include_router(predict_router)
+api_v1_router.include_router(knowledge_graph_router)

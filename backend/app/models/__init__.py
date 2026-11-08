@@ -28,6 +28,14 @@ from backend.app.models.expert_case import ExpertReviewCase
 from backend.app.models.expert_assessment import ExpertAssessment, ExpertAssessmentRevision
 from backend.app.models.intervention import InterventionRecord, OutcomeObservation
 
+# Stage 9 Models (Phase II Precision Agriculture)
+from backend.app.models.geo_spatial import PlotGeometry, LocationPermission
+from backend.app.models.satellite import SatelliteSource, SatelliteAcquisition, SatelliteObservation, SATELLITE_EVIDENCE_DISCLAIMER
+from backend.app.models.sensor import SensorDevice, SensorMeasurement, SensorCalibration
+from backend.app.models.evidence_fusion import FusionExplanation
+from backend.app.models.yield_research import HarvestMeasurement, YieldForecastRecord
+from backend.app.models.knowledge_graph import KnowledgeEntity, KnowledgeRelationship
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -73,4 +81,19 @@ __all__ = [
     "ExpertAssessmentRevision",
     "InterventionRecord",
     "OutcomeObservation",
+    # Stage 9 exports
+    "PlotGeometry",
+    "LocationPermission",
+    "SatelliteSource",
+    "SatelliteAcquisition",
+    "SatelliteObservation",
+    "SATELLITE_EVIDENCE_DISCLAIMER",
+    "SensorDevice",
+    "SensorMeasurement",
+    "SensorCalibration",
+    "FusionExplanation",
+    "HarvestMeasurement",
+    "YieldForecastRecord",
+    "KnowledgeEntity",
+    "KnowledgeRelationship",
 ]

@@ -10,6 +10,7 @@ from backend.app.database.session import engine as default_engine, SessionLocal 
 from backend.app.models.user import Role
 from backend.app.models.crop import Crop
 from backend.app.models.risk_rule import RiskRule
+from backend.app.services.knowledge_graph_service import KnowledgeGraphService
 
 
 def _seed_data(session: Session):
@@ -155,6 +156,9 @@ def _seed_data(session: Session):
             session.add(RiskRule(**r))
 
     session.commit()
+
+    # 4. Seed Agricultural Knowledge Graph Taxonomy
+    KnowledgeGraphService.seed_initial_knowledge_graph(session)
 
 
 def init_db(engine_or_session=None, session_factory=None):

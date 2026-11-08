@@ -387,3 +387,145 @@ export interface InterventionTimeline {
   latest_observation_media: Array<{ id: string; mime_type: string; url: string }>;
   confounding_variables_notice: string;
 }
+
+// Stage 9 Types: Phase II Advanced Precision Agriculture
+export interface PlotGeometry {
+  id: string;
+  plot_id: string;
+  geometry_type: string;
+  centroid: { latitude: number; longitude: number };
+  calculated_area_hectares: number;
+  calculated_area_acres: number;
+  bbox: number[];
+  is_valid: boolean;
+  properties?: Record<string, any>;
+}
+
+export interface LocationPermission {
+  id: string;
+  farm_id: string;
+  user_id: string;
+  granularity: "EXACT_BOUNDARY" | "COARSE_VILLAGE" | "REVOKED";
+  is_active: boolean;
+  notes?: string;
+}
+
+export interface SatelliteObservationItem {
+  id: string;
+  observation_date: string;
+  mean_ndvi: number;
+  min_ndvi: number;
+  max_ndvi: number;
+  std_ndvi: number;
+  mean_evi: number;
+  mean_ndmi: number;
+  cloud_masked_pixel_ratio: number;
+  trend_classification: "VIGOR_INCREASING" | "STABLE" | "DECLINING_STRESS" | "HARVEST_CLEARING";
+}
+
+export interface SatelliteTimeSeries {
+  plot_id: string;
+  trend_summary: string;
+  observations_count: number;
+  evidence_disclaimer: string;
+  time_series: SatelliteObservationItem[];
+}
+
+export interface SensorDevice {
+  id: string;
+  farm_id: string;
+  plot_id?: string;
+  device_serial_number: string;
+  device_category: "SOIL_PROBE" | "WEATHER_STATION" | "LEAF_WETNESS" | "NPK_PROBE";
+  status: "ACTIVE" | "INACTIVE" | "DECOMMISSIONED" | "ERROR";
+  firmware_version?: string;
+  last_heartbeat_at?: string;
+  auth_token?: string;
+}
+
+export interface SensorMeasurement {
+  id: string;
+  timestamp: string;
+  soil_moisture_pct?: number;
+  soil_temperature_c?: number;
+  ambient_temperature_c?: number;
+  relative_humidity_pct?: number;
+  leaf_wetness_pct?: number;
+  solar_radiation_w_m2?: number;
+  data_quality_flag: "VALID" | "SUSPECT_STUCK" | "SUSPECT_SPIKE" | "UNCALIBRATED" | "OUT_OF_BOUNDS";
+}
+
+export interface SensorPlotTelemetryHistory {
+  plot_id: string;
+  count: number;
+  measurements: SensorMeasurement[];
+}
+
+export interface FusionContradiction {
+  conflict_type: string;
+  description: string;
+  resolution: string;
+}
+
+export interface FusionExplanation {
+  id: string;
+  plot_id: string;
+  evaluation_timestamp: string;
+  overall_vigor_status: string;
+  primary_stress_driver: string;
+  evidence_sources: Record<string, any>;
+  contradictions_detected: FusionContradiction[];
+  farmer_explanation: {
+    en: string;
+    te: string;
+    hi: string;
+  };
+  epistemic_qualifications: Record<string, any>;
+}
+
+export interface HarvestMeasurement {
+  id: string;
+  plot_id: string;
+  season_id: string;
+  harvest_date: string;
+  yield_quintals_per_acre: number;
+  total_harvest_kg: number;
+  provenance_tier: "TIER_1_VERIFIED_WEIGHBRIDGE" | "TIER_2_CCE_CUT" | "TIER_3_FARMER_REPORT";
+  verification_document_url?: string;
+}
+
+export interface YieldForecastResponse {
+  plot_id: string;
+  crop_name: string;
+  forecast_status: "WITHHELD_INSUFFICIENT_DATA" | "READY_FOR_PILOT" | "RESEARCH_ONLY";
+  is_forecast_available: boolean;
+  sample_count_available: number;
+  minimum_sample_threshold_required: number;
+  withholding_reason?: string;
+  predicted_yield_min?: number;
+  predicted_yield_max?: number;
+  confidence_score?: number;
+  scientific_disclaimer: string;
+}
+
+export interface KnowledgeEntity {
+  id: string;
+  entity_type: string;
+  canonical_name: string;
+  local_name_te?: string;
+  local_name_hi?: string;
+  scientific_name?: string;
+  properties?: Record<string, any>;
+}
+
+export interface KnowledgeTraversalHop {
+  relationship_type: string;
+  confidence_weight: number;
+  evidence_source: string;
+  target_entity: KnowledgeEntity;
+}
+
+export interface KnowledgeTraversalResponse {
+  root_entity: KnowledgeEntity;
+  hops: KnowledgeTraversalHop[];
+}

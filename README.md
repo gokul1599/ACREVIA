@@ -17,6 +17,7 @@
 - **Climate Risk Subsystem:** RiskCast (Hourly Observations vs. Forecasts, PJTSAU Rules, Leaf Wetness Hours, Idempotent Alerts)
 - **Human Expert Network:** ExpertConnect (Agronomist Credentialing, Case Triage, Multimodal Evidence Dossiers, Immutable Revisions)
 - **Farm Action Journal:** Intervention Intelligence (Biological/Chemical tracking, PHI/REI, Outcome Observations, Non-Causal Disclaimers)
+- **Precision Agriculture (Stage 09):** Acrevia Geo (WGS84 Geometries), Acrevia Earth (Sentinel-2/Landsat-9 NDVI/EVI/NDMI), Acrevia Sense (IoT & Calibration QC), Acrevia Fusion (Contradiction Resolution), Acrevia Predict (Governed Feasibility & Withholding), and Agricultural Knowledge Graph.
 - **Security & Authorization:** Bcrypt (12 rounds), JWT (HS256), Multi-Tenant Farm Isolation (`verify_farm_access`)
 
 ---
@@ -36,7 +37,7 @@ projects/
 │   │   ├── security/           # JWT & Multi-Tenant Dependency Layer
 │   │   ├── services/           # Encapsulated Business Logic (RiskCast, ExpertConnect, Interventions, KrishiBrain)
 │   │   └── tasks/              # Standalone Bounded Cron Tasks (Batch RiskCast Runner)
-│   ├── tests/                  # 53 Comprehensive Integration, Security & Stage 8 E2E Tests
+│   ├── tests/                  # 60 Comprehensive Integration, Security & Stage 9 E2E Tests
 │   └── Dockerfile              # Production Multi-Stage Container Definition
 ├── ml/                         # Advanced Agricultural Computer Vision Subsystem
 │   ├── models/                 # MultiCrop Backbones, Heads & Abstention Engines
@@ -47,8 +48,9 @@ projects/
 │   ├── app/                    # Next.js 14 App Router Pages (Dashboard, Diagnosis, KrishiBrain, CropPulse, Workspace)
 │   ├── lib/api/                # Strongly Typed API Client & Data Interfaces
 │   ├── messages/               # 100% Key-Parity Multilingual Dictionaries (Telugu, English, Hindi)
-│   └── tests/                  # 16 Frontend Unit, Security & Stage 8 Verification Tests
+│   └── tests/                  # 20 Frontend Unit, Security & Stage 9 Verification Tests
 ├── docs/                       # Comprehensive Architecture & Research Documents
+│   ├── stage-09/               # 17 Advanced Precision Agriculture, Satellite, IoT & Predict Deliverables
 │   ├── stage-08/               # 20 Production Hardening, Audit & Validation Deliverables for Stage 8
 │   ├── stage-07/               # 15 Architectural, Governance & Evaluation Specifications for Stage 7
 │   ├── stage-06/               # PWA, Mobile UX & Localization Specs

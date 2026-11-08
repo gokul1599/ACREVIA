@@ -66,3 +66,14 @@ class RateLimitExceededException(AcreviaException):
             details={"retry_after_seconds": retry_after}
         )
 
+
+# Convenient Aliases for Service Layer Consistency
+NotFoundError = NotFoundException
+ValidationError = ValidationException
+AuthorizationError = AuthorizationException
+PermissionDeniedError = AuthorizationException
+AuthenticationError = AuthenticationException
+ConflictError = ConflictException
+ServiceUnavailableError = ServiceUnavailableException
+
+
