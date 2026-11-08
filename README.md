@@ -9,8 +9,9 @@
 
 - **Initial Crops:** Cotton (*Gossypium hirsutum*), Rice (*Oryza sativa*), Chilli (*Capsicum annuum*)
 - **Supported Languages:** Telugu (`te`), English (`en`), Hindi (`hi`)
-- **Backend Architecture:** Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16 (Neon / SQLite fallback)
+- **Backend Architecture:** Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL 16 + pgvector (Neon / SQLite fallback)
 - **ML / Inference Architecture:** PyTorch 2.15, MobileNetV3-Small/Large, ONNX Runtime, Int8 Quantization
+- **Knowledge / RAG Subsystem:** KrishiBrain (Structure-Aware Chunking, 1536d Deterministic & Cloud Embeddings, Hybrid Retrieval, CIBRC Safety Guardrails)
 - **Security & Authorization:** Bcrypt (12 rounds), JWT (HS256), Multi-Tenant Farm Isolation (`verify_farm_access`)
 
 ---
@@ -77,10 +78,10 @@ Interactive API documentation is accessible at `http://localhost:8000/docs`.
 
 ### 3.3 Running Automated Tests
 ```powershell
-# Run backend test suite (31 tests)
+# Run backend test suite (39 tests including KrishiBrain)
 python -m pytest backend/tests -v
 
-# Run entire repository test suite (96 tests)
+# Run entire repository test suite (104 tests)
 python -m pytest tests/ml tests/api ml/inference_service/tests backend/tests -v
 ```
 
@@ -92,5 +93,5 @@ python -m pytest tests/ml tests/api ml/inference_service/tests backend/tests -v
 - **Stage 2 (Dataset Engineering & Baseline ML):** Complete (Verdict: PASSED WITH OPEN RISKS)
 - **Stage 3 (Advanced CV, Uncertainty & Inference Engineering):** Complete (Verdict: PASSED WITH OPEN RISKS)
 - **Stage 4 (Enterprise Backend, Database, Auth & Multi-Tenancy):** Complete (Verdict: PASSED WITH OPEN RISKS)
-- **Stage 5 (KrishiBrain Multimodal RAG & Knowledge Engine):** Next Scheduled Milestone
-- **Stage 7 (RiskCast, Climate Risk, ExpertConnect & Interventions):** Scheduled (Weeks 13–14)
+- **Stage 5 (KrishiBrain Multimodal RAG & Knowledge Engine):** Complete (Verdict: PASSED WITH OPEN RISKS)
+- **Stage 7 (RiskCast, Climate Risk, ExpertConnect & Interventions):** Next Scheduled Milestone (Weeks 13–14)

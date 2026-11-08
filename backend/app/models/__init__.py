@@ -11,6 +11,12 @@ from backend.app.models.observation import Observation, ObservationMedia, ImageQ
 from backend.app.models.diagnosis import DiagnosisRequest, Prediction, PredictionCandidate, ExpertReview
 from backend.app.models.operation import FarmOperation, WeatherObservation, RiskAssessment
 from backend.app.models.governance import ConsentRecord, AuditLog
+from backend.app.models.knowledge_source import KnowledgeSource
+from backend.app.models.knowledge_document import KnowledgeDocument, KnowledgeDocumentVersion
+from backend.app.models.knowledge_chunk import KnowledgeChunk
+from backend.app.models.knowledge_embedding import KnowledgeEmbedding
+from backend.app.models.ingestion_job import IngestionJob
+from backend.app.models.knowledge_feedback import KnowledgeFeedback
 
 __all__ = [
     "Base",
@@ -38,5 +44,12 @@ __all__ = [
     "WeatherObservation",
     "RiskAssessment",
     "ConsentRecord",
-    "AuditLog"
+    "AuditLog",
+    "KnowledgeSource",
+    "KnowledgeDocument",
+    "KnowledgeDocumentVersion",
+    "KnowledgeChunk",
+    "KnowledgeEmbedding",
+    "IngestionJob",
+    "KnowledgeFeedback",
 ]

@@ -14,6 +14,7 @@ from backend.app.api.v1.endpoints.expert_reviews import router as expert_reviews
 from backend.app.api.v1.endpoints.weather import router as weather_router
 from backend.app.api.v1.endpoints.consent import router as consent_router
 from backend.app.api.v1.endpoints.system import router as system_router
+from backend.app.api.v1.endpoints.knowledge import router as knowledge_router
 
 api_v1_router = APIRouter()
 
@@ -27,3 +28,4 @@ api_v1_router.include_router(expert_reviews_router)
 api_v1_router.include_router(weather_router)
 api_v1_router.include_router(consent_router)
 api_v1_router.include_router(system_router)
+api_v1_router.include_router(knowledge_router)
