@@ -28,6 +28,13 @@ from backend.app.api.v1.endpoints.fusion import router as fusion_router
 from backend.app.api.v1.endpoints.predict import router as predict_router
 from backend.app.api.v1.endpoints.knowledge_graph import router as knowledge_graph_router
 
+# Stage 10 Routers (Farm Digital Twin & Decision Intelligence)
+from backend.app.api.v1.endpoints.twin import router as twin_router
+from backend.app.api.v1.endpoints.simulations import router as simulations_router
+from backend.app.api.v1.endpoints.optimization import router as optimization_router
+from backend.app.api.v1.endpoints.planning import router as planning_router
+from backend.app.api.v1.endpoints.decisions import router as decisions_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -52,3 +59,10 @@ api_v1_router.include_router(sense_router)
 api_v1_router.include_router(fusion_router)
 api_v1_router.include_router(predict_router)
 api_v1_router.include_router(knowledge_graph_router)
+
+# Stage 10 Routes
+api_v1_router.include_router(twin_router)
+api_v1_router.include_router(simulations_router)
+api_v1_router.include_router(optimization_router)
+api_v1_router.include_router(planning_router)
+api_v1_router.include_router(decisions_router)

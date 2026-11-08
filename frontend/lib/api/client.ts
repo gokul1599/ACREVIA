@@ -31,6 +31,16 @@ import type {
   YieldForecastResponse,
   KnowledgeEntity,
   KnowledgeTraversalResponse,
+  FarmTwin,
+  TwinSnapshotSummary,
+  DataCompleteness,
+  SimulationScenario,
+  ScenarioComparison,
+  OptimizationProblem,
+  CropCalendarDefinition,
+  CropTask,
+  DecisionRecord,
+  DecisionFeedback,
 } from "./types.ts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -580,6 +590,143 @@ class ApiClient {
 
   async traverseKnowledgeGraph(entity: string): Promise<KnowledgeTraversalResponse> {
     return this.request<KnowledgeTraversalResponse>(`/knowledge-graph/traverse?entity=${encodeURIComponent(entity)}`);
+  }
+
+  // Stage 10 Methods
+  async getFarmTwin(farmId: string): Promise<FarmTwin> {
+    return this.request<FarmTwin>(`/twin/farms/${farmId}`);
+  }
+
+  async getTwinCompleteness(farmId: string): Promise<DataCompleteness> {
+    return this.request<DataCompleteness>(`/twin/farms/${farmId}/completeness`);
+  }
+
+  async reconcileTwin(farmId: string): Promise<any> {
+    return this.request<any>(`/twin/farms/${farmId}/reconcile`, { method: "POST" });
+  }
+
+  async listTwinSnapshots(farmId: string, limit = 10): Promise<TwinSnapshotSummary[]> {
+    return this.request<TwinSnapshotSummary[]>(`/twin/farms/${farmId}/snapshots?limit=${limit}`);
+  }
+
+  async runSimulation(data: {
+    plot_id: string;
+    crop_season_id?: string;
+    scenario_name: string;
+    scenario_type?: string;
+    baseline_snapshot_id?: string;
+    input_parameters?: Record<string, any>;
+    farmer_assumptions?: Record<string, any>;
+    constraints?: Record<string, any>;
+  }): Promise<SimulationScenario> {
+    return this.request<SimulationScenario>("/simulations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getSimulation(id: string): Promise<SimulationScenario> {
+    return this.request<SimulationScenario>(`/simulations/${id}`);
+  }
+
+  async compareSimulations(scenarioIds: string[]): Promise<ScenarioComparison> {
+    return this.request<ScenarioComparison>("/simulations/compare", {
+      method: "POST",
+      body: JSON.stringify({ scenario_ids: scenarioIds }),
+    });
+  }
+
+  async solveOptimizationProblem(data: {
+    farm_id: string;
+    plot_id?: string;
+    problem_type?: string;
+    objective_type?: string;
+    decision_variables?: Record<string, any>;
+    hard_constraints?: Record<string, any>;
+    soft_constraints?: Record<string, any>;
+  }): Promise<OptimizationProblem> {
+    return this.request<OptimizationProblem>("/optimization/problems", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getOptimizationProblem(id: string): Promise<OptimizationProblem> {
+    return this.request<OptimizationProblem>(`/optimization/problems/${id}`);
+  }
+
+  async listCropCalendars(cropName?: string, zone?: string): Promise<CropCalendarDefinition[]> {
+    const params = new URLSearchParams();
+    if (cropName) params.append("crop_name", cropName);
+    if (zone) params.append("zone", zone);
+    return this.request<CropCalendarDefinition[]>(`/planning/calendars?${params.toString()}`);
+  }
+
+  async createCropTask(data: {
+    crop_season_id: string;
+    plot_id: string;
+    calendar_def_id?: string;
+    task_name: string;
+    task_category?: string;
+    due_date: string;
+    notes?: string;
+  }): Promise<CropTask> {
+    return this.request<CropTask>("/planning/tasks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listCropTasks(params: { plot_id?: string; crop_season_id?: string } = {}): Promise<CropTask[]> {
+    const query = new URLSearchParams();
+    if (params.plot_id) query.append("plot_id", params.plot_id);
+    if (params.crop_season_id) query.append("crop_season_id", params.crop_season_id);
+    return this.request<CropTask[]>(`/planning/tasks?${query.toString()}`);
+  }
+
+  async completeCropTask(
+    taskId: string,
+    data: {
+      actual_date?: string;
+      labor_hours?: number;
+      materials_used?: Array<Record<string, any>>;
+      observations?: string;
+    }
+  ): Promise<CropTask> {
+    return this.request<CropTask>(`/planning/tasks/${taskId}/complete`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async analyzeDecision(data: {
+    plot_id: string;
+    query_text: string;
+    decision_category?: string;
+  }): Promise<DecisionRecord> {
+    return this.request<DecisionRecord>("/decisions/analyze", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getDecisionRecord(id: string): Promise<DecisionRecord> {
+    return this.request<DecisionRecord>(`/decisions/${id}`);
+  }
+
+  async recordDecisionFeedback(
+    id: string,
+    data: {
+      farmer_action_taken: string;
+      farmer_rating?: number;
+      feedback_notes?: string;
+      observed_outcome?: string;
+    }
+  ): Promise<DecisionFeedback> {
+    return this.request<DecisionFeedback>(`/decisions/${id}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 }
 

@@ -18,6 +18,7 @@
 - **Human Expert Network:** ExpertConnect (Agronomist Credentialing, Case Triage, Multimodal Evidence Dossiers, Immutable Revisions)
 - **Farm Action Journal:** Intervention Intelligence (Biological/Chemical tracking, PHI/REI, Outcome Observations, Non-Causal Disclaimers)
 - **Precision Agriculture (Stage 09):** Acrevia Geo (WGS84 Geometries), Acrevia Earth (Sentinel-2/Landsat-9 NDVI/EVI/NDMI), Acrevia Sense (IoT & Calibration QC), Acrevia Fusion (Contradiction Resolution), Acrevia Predict (Governed Feasibility & Withholding), and Agricultural Knowledge Graph.
+- **Intelligent Farm Digital Twin & Decision Intelligence (Stage 10):** ACREVIA Twin (8-Tier Provenance & Snapshots), ACREVIA Simulate (FAO-56 Dual-$K_c$ Water Balance, GDD Staging, Waterlogging), ACREVIA Optimize (Simplex Multi-Plot Water & Nutrient Allocation with Transparent Infeasibility Diagnosis), ACREVIA Plan (PJTSAU Calendars, Sowing-Date Scheduling, Weather Spray Conflict Guards), and ACREVIA Decision (7 Canonical Recommendation States, Grounded Explanation Engine en/te/hi, Zero Automated Actuation Boundary).
 - **Security & Authorization:** Bcrypt (12 rounds), JWT (HS256), Multi-Tenant Farm Isolation (`verify_farm_access`)
 
 ---
@@ -37,19 +38,21 @@ projects/
 │   │   ├── security/           # JWT & Multi-Tenant Dependency Layer
 │   │   ├── services/           # Encapsulated Business Logic (RiskCast, ExpertConnect, Interventions, KrishiBrain)
 │   │   └── tasks/              # Standalone Bounded Cron Tasks (Batch RiskCast Runner)
-│   ├── tests/                  # 60 Comprehensive Integration, Security & Stage 9 E2E Tests
+│   ├── tests/                  # 68 Comprehensive Integration, Security, Stage 9 & Stage 10 E2E Tests
 │   └── Dockerfile              # Production Multi-Stage Container Definition
 ├── ml/                         # Advanced Agricultural Computer Vision Subsystem
 │   ├── models/                 # MultiCrop Backbones, Heads & Abstention Engines
 │   ├── training/               # FocalLoss, LabelSmoothing, Cosine Schedulers
 │   ├── evaluation/             # Grad-CAM Explainability & Field Robustness Harness
-│   └── inference_service/      # Dedicated Standalone ML Microservice (:8001)
+│   └── inference_service/      # Dedicated Standalone ML Microservice (:8001) with 7 automated tests
 ├── frontend/                   # Farmer & Expert Progressive Web Application
-│   ├── app/                    # Next.js 14 App Router Pages (Dashboard, Diagnosis, KrishiBrain, CropPulse, Workspace)
+│   ├── app/                    # Next.js 16 App Router Pages (Dashboard, Diagnosis, KrishiBrain, CropPulse, Workspace)
+│   ├── components/             # Reusable UI & Stage 10 Twin, Simulation, Optimization, Planning & Decision Cards
 │   ├── lib/api/                # Strongly Typed API Client & Data Interfaces
 │   ├── messages/               # 100% Key-Parity Multilingual Dictionaries (Telugu, English, Hindi)
-│   └── tests/                  # 20 Frontend Unit, Security & Stage 9 Verification Tests
+│   └── tests/                  # 23 Frontend Unit, Security, Stage 9 & Stage 10 Verification Tests
 ├── docs/                       # Comprehensive Architecture & Research Documents
+│   ├── stage-10/               # 15 Digital Twin, Simulation, Optimization, Planning & Decision Deliverables
 │   ├── stage-09/               # 17 Advanced Precision Agriculture, Satellite, IoT & Predict Deliverables
 │   ├── stage-08/               # 20 Production Hardening, Audit & Validation Deliverables for Stage 8
 │   ├── stage-07/               # 15 Architectural, Governance & Evaluation Specifications for Stage 7

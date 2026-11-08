@@ -36,6 +36,13 @@ from backend.app.models.evidence_fusion import FusionExplanation
 from backend.app.models.yield_research import HarvestMeasurement, YieldForecastRecord
 from backend.app.models.knowledge_graph import KnowledgeEntity, KnowledgeRelationship
 
+# Stage 10 Models (Intelligent Farm Digital Twin & Decision Intelligence)
+from backend.app.models.digital_twin import FarmTwin, TwinSnapshot, TwinStateRecord, TwinSynchronizationEvent
+from backend.app.models.simulation import SimulationScenario, SimulationResult
+from backend.app.models.optimization import OptimizationProblem, OptimizationResult
+from backend.app.models.crop_planning import CropCalendarDefinition, CropTask
+from backend.app.models.decision_intelligence import DecisionRecord, DecisionFeedback
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -96,4 +103,17 @@ __all__ = [
     "YieldForecastRecord",
     "KnowledgeEntity",
     "KnowledgeRelationship",
+    # Stage 10 exports
+    "FarmTwin",
+    "TwinSnapshot",
+    "TwinStateRecord",
+    "TwinSynchronizationEvent",
+    "SimulationScenario",
+    "SimulationResult",
+    "OptimizationProblem",
+    "OptimizationResult",
+    "CropCalendarDefinition",
+    "CropTask",
+    "DecisionRecord",
+    "DecisionFeedback",
 ]

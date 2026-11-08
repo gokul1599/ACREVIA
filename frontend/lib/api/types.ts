@@ -529,3 +529,212 @@ export interface KnowledgeTraversalResponse {
   root_entity: KnowledgeEntity;
   hops: KnowledgeTraversalHop[];
 }
+
+// ==========================================
+// STAGE 10: DIGITAL TWIN, SIMULATE, OPTIMIZE, PLAN & DECISIONS
+// ==========================================
+
+export type ProvenanceType =
+  | "MEASURED"
+  | "FARMER_REPORTED"
+  | "EXPERT_REVIEWED"
+  | "AI_ESTIMATED"
+  | "PROVIDER_OBSERVATION"
+  | "SIMULATED"
+  | "INFERRED"
+  | "UNKNOWN";
+
+export interface TwinStateRecord {
+  id: string;
+  snapshot_id: string;
+  entity_type: string;
+  entity_id: string;
+  property_name: string;
+  property_value_json: Record<string, any>;
+  unit?: string;
+  provenance_type: ProvenanceType;
+  source_reference?: string;
+  observed_at: string;
+  quality_status: string;
+}
+
+export interface TwinSnapshotSummary {
+  id: string;
+  twin_id: string;
+  farm_id: string;
+  plot_id?: string;
+  crop_season_id?: string;
+  snapshot_version: number;
+  data_completeness_pct: number;
+  payload_hash: string;
+  generated_at: string;
+  source_manifest_json: Record<string, any>;
+}
+
+export interface DataCompleteness {
+  farm_id: string;
+  overall_score: number;
+  dimensions: Record<string, number>;
+  missing_critical_fields: string[];
+  recommendations: string[];
+}
+
+export interface FarmTwin {
+  id: string;
+  farm_id: string;
+  twin_version: number;
+  state_status: "SYNCHRONIZED" | "STALE" | "RECONCILING" | "ERROR";
+  last_synchronized_at: string;
+  completeness_score: number;
+  latest_snapshot?: TwinSnapshotSummary;
+  active_plots_count: number;
+}
+
+export interface SimulationResult {
+  id: string;
+  scenario_id: string;
+  model_name: string;
+  model_version: string;
+  outputs_json: {
+    root_zone_depletion_mm?: number;
+    total_available_water_mm?: number;
+    readily_available_water_mm?: number;
+    relative_transpiration_ratio?: number;
+    water_stress_index?: number;
+    stress_days_count?: number;
+    waterlogging_risk_pct?: number;
+    depletion_trajectory_days?: number[];
+    accumulated_gdd_horizon?: number;
+    mean_daily_gdd?: number;
+    estimated_drainage_hours?: number;
+    waterlogging_risk_level?: string;
+  };
+  uncertainty_metadata_json: Record<string, any>;
+  evidence_sources_json: Array<Record<string, any>>;
+  execution_duration_ms: number;
+  completed_at: string;
+}
+
+export interface SimulationScenario {
+  id: string;
+  plot_id: string;
+  crop_season_id?: string;
+  creator_id: string;
+  scenario_type: "IRRIGATION_WATER_BALANCE" | "THERMAL_GDD_STAGE" | "WATERLOGGING_STRESS";
+  scenario_name: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  baseline_snapshot_id?: string;
+  input_parameters_json: Record<string, any>;
+  farmer_assumptions_json: Record<string, any>;
+  constraints_json: Record<string, any>;
+  result?: SimulationResult;
+  created_at: string;
+}
+
+export interface ScenarioComparison {
+  scenarios: Array<{
+    scenario_id: string;
+    scenario_name: string;
+    scenario_type: string;
+    key_metrics: Record<string, any>;
+    uncertainty_bounds: Record<string, any>;
+  }>;
+  comparison_summary: Record<string, any>;
+  trade_off_recommendation?: string;
+}
+
+export interface OptimizationResult {
+  id: string;
+  problem_id: string;
+  feasibility_status: "FEASIBLE" | "INFEASIBLE";
+  selected_solution_json: Record<string, any>;
+  alternative_solutions_json: Array<Record<string, any>>;
+  conflicting_constraints_json: string[];
+  trade_off_analysis_json: Record<string, any>;
+  solver_name: string;
+  solved_at: string;
+}
+
+export interface OptimizationProblem {
+  id: string;
+  farm_id: string;
+  plot_id?: string;
+  problem_type: "WATER_ALLOCATION" | "INPUT_BUDGET_ALLOCATION" | "IRRIGATION_WINDOW";
+  objective_type: string;
+  status: "PENDING" | "SOLVED" | "INFEASIBLE" | "FAILED";
+  decision_variables_json: Record<string, any>;
+  hard_constraints_json: Record<string, any>;
+  soft_constraints_json: Record<string, any>;
+  result?: OptimizationResult;
+  created_at: string;
+}
+
+export interface CropCalendarDefinition {
+  id: string;
+  crop_id: string;
+  variety_id?: string;
+  agro_climatic_zone: string;
+  growth_stage: string;
+  typical_duration_days: number;
+  recommended_tasks_json: Array<{
+    task_name: string;
+    category: string;
+    offset_days: number;
+  }>;
+  source_citation: string;
+  version: string;
+}
+
+export interface CropTask {
+  id: string;
+  crop_season_id: string;
+  plot_id: string;
+  calendar_def_id?: string;
+  task_name: string;
+  task_category: "LAND_PREP" | "SOWING" | "IRRIGATION" | "FERTILIZATION" | "PLANT_PROTECTION" | "HARVEST";
+  due_date: string;
+  completed_date?: string;
+  status: "PLANNED" | "DUE" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "RESCHEDULED" | "CANCELLED";
+  weather_conflict_flag: boolean;
+  conflict_reason?: string;
+  execution_details_json: Record<string, any>;
+  notes?: string;
+  created_at: string;
+}
+
+export interface DecisionRecord {
+  id: string;
+  plot_id: string;
+  query_text: string;
+  decision_category: string;
+  recommendation_state:
+    | "INFORMATIONAL"
+    | "EVIDENCE_SUPPORTED"
+    | "SCENARIO_RESULT"
+    | "REQUIRES_MORE_INFORMATION"
+    | "REQUIRES_EXPERT_REVIEW"
+    | "INSUFFICIENT_EVIDENCE"
+    | "NOT_SUPPORTED";
+  grounded_explanation_en: string;
+  grounded_explanation_te: string;
+  grounded_explanation_hi: string;
+  evidence_sources_json: Array<{
+    source_title: string;
+    chapter?: string;
+    chunk_id?: string;
+    citation?: string;
+  }>;
+  uncertainty_disclosures_json: string[];
+  expert_escalation_case_id?: string;
+  evaluated_at: string;
+}
+
+export interface DecisionFeedback {
+  id: string;
+  decision_id: string;
+  farmer_action_taken: "ADOPTED" | "PARTIALLY_ADOPTED" | "REJECTED" | "INAPPLICABLE";
+  farmer_rating?: number;
+  feedback_notes?: string;
+  observed_outcome?: string;
+  recorded_at: string;
+}
