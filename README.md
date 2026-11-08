@@ -21,6 +21,7 @@
 - **Intelligent Farm Digital Twin & Decision Intelligence (Stage 10):** ACREVIA Twin (8-Tier Provenance & Snapshots), ACREVIA Simulate (FAO-56 Dual-$K_c$ Water Balance, GDD Staging, Waterlogging), ACREVIA Optimize (Simplex Multi-Plot Water & Nutrient Allocation with Transparent Infeasibility Diagnosis), ACREVIA Plan (PJTSAU Calendars, Sowing-Date Scheduling, Weather Spray Conflict Guards), and ACREVIA Decision (7 Canonical Recommendation States, Grounded Explanation Engine en/te/hi, Zero Automated Actuation Boundary).
 - **Agricultural Economics, Market Analytics & Produce Traceability (Stage 11):** ACREVIA Ledger (Decimal-accurate CACP $A_1$ expenses, receipts & immutable corrections), ACREVIA Market (Agmarknet/e-NAM Telangana mandis, modal benchmarks, distance-adjusted comparative net realization), ACREVIA Harvest (Multi-picking tracking, field loss accounting, automated ProduceLot minting), ACREVIA Quality (Calibrated moisture assay provenance, cold storage lots), ACREVIA Trace (Quantity conservation balance, privacy-redacted public QR verification), and ACREVIA Economics (Cost of cultivation, gross revenues, unit margins, and SHA-256 sealed PMFBY crop loss packages).
 - **Agricultural Collaboration Network & Regional Pulse (Stage 12):** ACREVIA Connect (Moderated community spaces, post taxonomies, verified agronomist reply badges, non-scientific helpful voting disclaimers, misinformation reporting), ACREVIA Commons (Governed knowledge submissions, expert agronomic review gates, multilingual translation versions, KrishiBrain RAG handoff), ACREVIA Collectives (Private FPO/cooperative workspaces, role isolation, shared calendars, minimum cohort size rule $N \ge 5$ farms with strict suppression of individual financials/GPS), ACREVIA Research Hub (Institutional projects, purpose-specific farmer consent, farm-disjoint dataset splits, inter-annotator disagreement tracking), ACREVIA Extension (Educational crop guides, interactive workshops, capacity management, farmer feedback), and ACREVIA Regional Pulse (District-level signal aggregation, privacy-preserving $N \ge 3$ distinct farm threshold, automatic sensational outbreak rumor suppression).
+- **Climate-Resilient & Sustainable Agriculture (Stage 13):** ACREVIA Soil (Accredited lab assays, Walkley-Black SOC, composite core tracking, spatial coverage density warnings), ACREVIA Water (Water asset inventory, metered irrigation, in-situ soil moisture telemetry, transparent hydrological water accounting separating measured from modeled components), ACREVIA Climate (30-year climatological normals 1991-2020, 5-tier hazard taxonomy, crop vulnerability windows, PJTSAU/CRIDA contingency adaptations), ACREVIA Nutrient (Soil-test-driven N-P-K & micronutrient management, split schedules, strict dosage rejection guards, agronomist escalation), ACREVIA Sustain (Verified regenerative practices, empirical SOC tracking, research-grade IPCC Tier 1/2 GHG accounting with non-certified disclaimers), and ACREVIA Resilience (Multi-dimensional vulnerability auditing, Evidence Quality Score $EQS$, climate adaptation scenario simulations).
 - **Security & Authorization:** Bcrypt (12 rounds), JWT (HS256), Multi-Tenant Farm Isolation (`verify_farm_access`)
 
 ---
@@ -129,34 +130,36 @@ python -m pytest tests/ml tests/api backend/tests -v
 - **Stage 10 (Farm Digital Twin, Scenario Simulation & Decision Intelligence):** Complete (Verdict: PASSED)
 - **Stage 11 (Agricultural Economics, Market Analytics & Produce Traceability):** Complete (Verdict: PASSED)
 - **Stage 12 (Agricultural Collaboration, Collectives, Research & Regional Pulse):** Complete (Verdict: PASSED)
+- **Stage 13 (Soil Health, Precision Water, Climate Resilience, Nutrient Governance & Sustainability):** Complete (Verdict: PASSED)
 
 ---
 
 ## 5. Verification & Testing Evidence
 
 ```powershell
-# Run entire repository automated test suite (118 passing automated tests)
-.venv\Scripts\python -m pytest backend/tests/ -v     # 81 passed, 0 failed
+# Run entire repository automated test suite (128 passing automated tests)
+.venv\Scripts\python -m pytest backend/tests/ -v     # 88 passed, 0 failed
 .venv\Scripts\python -m pytest ml/inference_service/tests/ -v  # 7 passed, 0 failed
-npm test --prefix frontend                          # 30 passed, 0 failed
+npm test --prefix frontend                          # 33 passed, 0 failed
 npm run build --prefix frontend                     # 13/13 static pages compiled
 ```
 
-Comprehensive technical monographs and audit records are documented in [`docs/stage-12/`](./docs/stage-12/):
-- `STAGE_12_READINESS_AUDIT.md`
-- `ACREVIA_CONNECT_ARCHITECTURE.md`
-- `KNOWLEDGE_CONTRIBUTION_GOVERNANCE.md`
-- `ACREVIA_COLLECTIVES_ARCHITECTURE.md`
-- `RESEARCH_HUB_AND_DATA_GOVERNANCE.md`
-- `AGRICULTURAL_EXTENSION_ARCHITECTURE.md`
-- `REGIONAL_PULSE_ARCHITECTURE.md`
-- `COMMUNITY_TRUST_AND_MODERATION_POLICY.md`
+Comprehensive technical monographs and audit records are documented in [`docs/stage-13/`](./docs/stage-13/):
+- `STAGE_13_READINESS_AUDIT.md`
+- `SOIL_HEALTH_INTELLIGENCE.md`
+- `WATER_INTELLIGENCE_ARCHITECTURE.md`
+- `CLIMATE_RESILIENCE_ARCHITECTURE.md`
+- `NUTRIENT_INTELLIGENCE_AND_GOVERNANCE.md`
+- `SUSTAINABLE_AGRICULTURE_INTELLIGENCE.md`
+- `AGRICULTURAL_RESILIENCE_ENGINE.md`
+- `AGRICULTURAL_SOURCE_AND_METHOD_GOVERNANCE.md`
 - `DATABASE_AND_DOMAIN_MODEL.md`
 - `API_CONTRACTS.md`
 - `SECURITY_AND_PRIVACY_REVIEW.md`
-- `OBSERVABILITY_AND_OPERATIONS.md`
-- `TESTING_REPORT.md`
+- `PERFORMANCE_AND_COST_REPORT.md`
+- `TESTING_AND_SCIENTIFIC_VALIDATION.md`
 - `DEPLOYMENT_GUIDE.md`
+- `STAGE_13_COMPLETION_REPORT.md`
 - `STAGE_12_COMPLETION_REPORT.md`
 
 Comprehensive technical monographs and audit records are documented in [`docs/stage-11/`](./docs/stage-11/):

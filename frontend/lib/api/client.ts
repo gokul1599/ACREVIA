@@ -1134,6 +1134,90 @@ class ApiClient {
     const query = qs.toString() ? `?${qs.toString()}` : "";
     return this.request<RegionalSignal[]>(`/regional-pulse/signals${query}`);
   }
+
+  // Stage 13: Soil Health, Water, Climate, Nutrient, Sustain & Resilience
+  async createSoilSample(data: any): Promise<any> {
+    return this.request("/soil/samples", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async ingestSoilLabResult(data: any): Promise<any> {
+    return this.request("/soil/lab-results", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getPlotSoilHistory(plotId: string): Promise<any> {
+    return this.request(`/soil/plot/${encodeURIComponent(plotId)}/history`);
+  }
+
+  async createWaterSource(data: any): Promise<any> {
+    return this.request("/water/sources", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async listWaterSources(farmId: string): Promise<any[]> {
+    return this.request(`/water/sources?farm_id=${encodeURIComponent(farmId)}`);
+  }
+
+  async recordIrrigationEvent(data: any): Promise<any> {
+    return this.request("/water/irrigation-events", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getPlotWaterBalance(plotId: string): Promise<any> {
+    return this.request(`/water/plot/${encodeURIComponent(plotId)}/balance`);
+  }
+
+  async compareWaterScenarios(data: any): Promise<any> {
+    return this.request("/water/scenarios/compare", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getClimateBaselines(districtCode: string): Promise<any[]> {
+    return this.request(`/climate/baselines/${encodeURIComponent(districtCode)}`);
+  }
+
+  async assessClimateExposure(data: any): Promise<any> {
+    return this.request("/climate/assess-exposure", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async prescribeNutrients(data: any): Promise<any> {
+    return this.request("/nutrient/prescribe", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getNutrientAssessment(assessmentId: string): Promise<any> {
+    return this.request(`/nutrient/assessment/${encodeURIComponent(assessmentId)}`);
+  }
+
+  async listSustainablePractices(): Promise<any[]> {
+    return this.request("/sustain/practices");
+  }
+
+  async recordFarmPractice(data: any): Promise<any> {
+    return this.request("/sustain/records", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async recordSoilCarbon(data: any): Promise<any> {
+    return this.request("/sustain/carbon-measurement", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getPlotEmissions(plotId: string, season = "Kharif", year = 2026): Promise<any> {
+    return this.request(`/sustain/plot/${encodeURIComponent(plotId)}/emissions?season=${encodeURIComponent(season)}&year=${year}`);
+  }
+
+  async getPlotSustainabilityScorecard(plotId: string, season = "Kharif", year = 2026): Promise<any> {
+    return this.request(`/sustain/plot/${encodeURIComponent(plotId)}/scorecard?season=${encodeURIComponent(season)}&year=${year}`);
+  }
+
+  async assessPlotResilience(plotId: string): Promise<any> {
+    return this.request("/resilience/assess", { method: "POST", body: JSON.stringify({ plot_id: plotId }) });
+  }
+
+  async getPlotResilience(plotId: string): Promise<any> {
+    return this.request(`/resilience/plot/${encodeURIComponent(plotId)}/latest`);
+  }
+
+  async simulateResilienceAdaptation(plotId: string, packageName = "REGENERATIVE_INTEGRATED_PACKAGE"): Promise<any> {
+    return this.request("/resilience/simulate-adaptation", {
+      method: "POST",
+      body: JSON.stringify({ plot_id: plotId, package_name: packageName }),
+    });
+  }
 }
 
 export const api = new ApiClient();

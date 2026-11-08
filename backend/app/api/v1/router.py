@@ -51,6 +51,14 @@ from backend.app.api.v1.endpoints.research import router as research_router
 from backend.app.api.v1.endpoints.extension import router as extension_router
 from backend.app.api.v1.endpoints.regional_pulse import router as regional_pulse_router
 
+# Stage 13 Routers (Phase IV Climate-Resilient & Sustainable Agriculture)
+from backend.app.api.v1.endpoints.soil import router as soil_router
+from backend.app.api.v1.endpoints.water import router as water_router
+from backend.app.api.v1.endpoints.climate import router as climate_router
+from backend.app.api.v1.endpoints.nutrient import router as nutrient_router
+from backend.app.api.v1.endpoints.sustain import router as sustain_router
+from backend.app.api.v1.endpoints.resilience import router as resilience_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -98,3 +106,11 @@ api_v1_router.include_router(collectives_router)
 api_v1_router.include_router(research_router)
 api_v1_router.include_router(extension_router)
 api_v1_router.include_router(regional_pulse_router)
+
+# Stage 13 Routes (Soil Health, Water Intelligence, Climate Resilience, Nutrient Governance & Sustainability)
+api_v1_router.include_router(soil_router)
+api_v1_router.include_router(water_router)
+api_v1_router.include_router(climate_router)
+api_v1_router.include_router(nutrient_router)
+api_v1_router.include_router(sustain_router)
+api_v1_router.include_router(resilience_router)

@@ -60,6 +60,20 @@ from backend.app.models.research_hub import ResearchProject, ResearchConsent, Da
 from backend.app.models.extension_learning import LearningResource, TrainingEvent, EventRegistration, LearningFeedback
 from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
 
+# Stage 13 Models (Soil Health, Water Intelligence, Climate Resilience, Nutrient Governance & Sustainability)
+from backend.app.models.soil_health import SoilProfile, SoilSample, SoilTestResult
+from backend.app.models.water_management import WaterSource, IrrigationEvent, SoilMoistureObservation, WaterBalanceSnapshot
+from backend.app.models.climate_resilience import ClimateBaseline, ClimateExposureAssessment, ClimateAdaptationScenario
+from backend.app.models.nutrient_intelligence import NutrientAssessment, NutrientExpertReview
+from backend.app.models.sustainability import (
+    AgriculturalPracticeDefinition,
+    FarmPracticeRecord,
+    SoilCarbonMeasurement,
+    EnvironmentalAccountingEstimate,
+    SUSTAINABILITY_RESEARCH_DISCLAIMER,
+)
+from backend.app.models.resilience_assessment import ResilienceAssessment, ResilienceScenarioSimulation
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -173,4 +187,24 @@ __all__ = [
     "LearningFeedback",
     "RegionalSignal",
     "RegionalSignalEvidence",
+    # Stage 13 exports
+    "SoilProfile",
+    "SoilSample",
+    "SoilTestResult",
+    "WaterSource",
+    "IrrigationEvent",
+    "SoilMoistureObservation",
+    "WaterBalanceSnapshot",
+    "ClimateBaseline",
+    "ClimateExposureAssessment",
+    "ClimateAdaptationScenario",
+    "NutrientAssessment",
+    "NutrientExpertReview",
+    "AgriculturalPracticeDefinition",
+    "FarmPracticeRecord",
+    "SoilCarbonMeasurement",
+    "EnvironmentalAccountingEstimate",
+    "SUSTAINABILITY_RESEARCH_DISCLAIMER",
+    "ResilienceAssessment",
+    "ResilienceScenarioSimulation",
 ]

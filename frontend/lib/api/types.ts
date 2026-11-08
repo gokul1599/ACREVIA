@@ -1176,3 +1176,292 @@ export interface RegionalSignal {
   observed_end_date: string;
   created_at: string;
 }
+
+// Stage 13 Types: Climate-Resilient & Sustainable Agriculture
+export interface SoilProfile {
+  id: string;
+  plot_id: string;
+  soil_order: string;
+  soil_series_name?: string;
+  drainage_class: string;
+  bulk_density_g_cm3?: number;
+  effective_soil_depth_cm?: number;
+  texture_class: string;
+  created_at: string;
+}
+
+export interface SoilSample {
+  id: string;
+  plot_id: string;
+  profile_id?: string;
+  sampled_by_user_id: string;
+  sample_code: string;
+  sampling_date: string;
+  sampling_depth_min_cm: number;
+  sampling_depth_max_cm: number;
+  gps_latitude?: number;
+  gps_longitude?: number;
+  composite_cores_count: number;
+  spatial_coverage_warning?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface SoilTestResult {
+  id: string;
+  soil_sample_id: string;
+  laboratory_name: string;
+  accreditation_number: string;
+  ph: number;
+  electrical_conductivity_ec: number;
+  organic_carbon_percent: number;
+  available_nitrogen_kg_ha: number;
+  available_phosphorus_kg_ha: number;
+  available_potassium_kg_ha: number;
+  available_sulphur_ppm?: number;
+  available_zinc_ppm?: number;
+  available_iron_ppm?: number;
+  available_boron_ppm?: number;
+  provenance_json: string;
+  verified_at: string;
+  created_at: string;
+}
+
+export interface SoilPlotHistoryResponse {
+  plot_id: string;
+  samples_count: number;
+  results: SoilTestResult[];
+  soc_trend_percent: number;
+  latest_ph?: number;
+  latest_nitrogen_status: string;
+}
+
+export interface WaterSource {
+  id: string;
+  farm_id: string;
+  source_type: string;
+  source_name: string;
+  depth_meters?: number;
+  static_water_level_m?: number;
+  discharge_capacity_lps?: number;
+  salinity_ec_dsm?: number;
+  ph?: number;
+  sar?: number;
+  seasonal_availability_json: string;
+  created_at: string;
+}
+
+export interface IrrigationEvent {
+  id: string;
+  plot_id: string;
+  water_source_id?: string;
+  event_date: string;
+  irrigation_method: string;
+  duration_hours: number;
+  calculated_volume_m3: number;
+  equivalent_depth_mm: number;
+  soil_moisture_before?: number;
+  soil_moisture_after?: number;
+  created_at: string;
+}
+
+export interface SoilMoistureObservation {
+  id: string;
+  plot_id: string;
+  sensor_id: string;
+  depth_cm: number;
+  volumetric_water_content: number;
+  matric_potential_kpa?: number;
+  moisture_status: string;
+  observed_at: string;
+}
+
+export interface WaterBalanceSnapshot {
+  id: string;
+  plot_id: string;
+  snapshot_date: string;
+  effective_precipitation_mm: number;
+  irrigation_applied_mm: number;
+  crop_evapotranspiration_mm: number;
+  deep_percolation_mm: number;
+  runoff_mm: number;
+  storage_change_mm: number;
+  accounting_status: string;
+  management_allowed_depletion_percent: number;
+  current_depletion_percent: number;
+}
+
+export interface WaterScenarioOption {
+  method: string;
+  total_water_m3: number;
+  water_saving_percent: number;
+  projected_yield_kg_per_acre: number;
+  energy_cost_inr: number;
+}
+
+export interface WaterScenarioComparisonResponse {
+  plot_id: string;
+  crop_name: string;
+  scenarios: WaterScenarioOption[];
+  recommended_strategy: string;
+}
+
+export interface ClimateBaseline {
+  id: string;
+  district_code: string;
+  month: number;
+  normal_rainfall_mm: number;
+  normal_tmax_celsius: number;
+  normal_tmin_celsius: number;
+  extreme_heat_days_p90: number;
+  dry_spell_frequency: number;
+  heavy_rain_days_count: number;
+  baseline_period: string;
+}
+
+export interface ClimateAdaptationScenario {
+  id: string;
+  assessment_id: string;
+  title: string;
+  description: string;
+  projected_loss_reduction_percent: number;
+  cost_delta_inr: number;
+  intervention_actions_json: string;
+}
+
+export interface ClimateExposureAssessment {
+  id: string;
+  plot_id: string;
+  crop_id?: string;
+  hazard_type: string;
+  severity_level: string;
+  crop_stage: string;
+  vulnerability_score: number;
+  forecast_tmax?: number;
+  forecast_rainfall_next_7_days?: number;
+  consecutive_rainless_days?: number;
+  recommended_adaptation: string;
+  institutional_citation: string;
+  assessed_at: string;
+  scenarios: ClimateAdaptationScenario[];
+}
+
+export interface NutrientAssessment {
+  id: string;
+  soil_test_result_id: string;
+  crop_id: string;
+  crop_name?: string;
+  nitrogen_status: string;
+  phosphorus_status: string;
+  potassium_status: string;
+  zinc_status: string;
+  boron_status: string;
+  recommended_n_kg_ha: number;
+  recommended_p2o5_kg_ha: number;
+  recommended_k2o_kg_ha: number;
+  split_application_schedule_json: string;
+  micronutrient_recommendations_json: string;
+  safeguard_checks_passed: boolean;
+  institutional_citation: string;
+  created_at: string;
+}
+
+export interface NutrientExpertReview {
+  id: string;
+  nutrient_assessment_id: string;
+  expert_user_id: string;
+  review_status: string;
+  agronomist_notes: string;
+  revised_prescription_json?: string;
+  reviewed_at: string;
+}
+
+export interface AgriculturalPracticeDefinition {
+  id: string;
+  code: string;
+  category: string;
+  title_en: string;
+  title_te: string;
+  title_hi: string;
+  description_en: string;
+  specification_json: string;
+}
+
+export interface FarmPracticeRecord {
+  id: string;
+  plot_id: string;
+  practice_code: string;
+  implementation_date: string;
+  area_covered_acres: number;
+  verification_method: string;
+  status: string;
+  created_at: string;
+}
+
+export interface SoilCarbonMeasurement {
+  id: string;
+  plot_id: string;
+  sample_date: string;
+  depth_cm: number;
+  soc_percent: number;
+  bulk_density?: number;
+  method: string;
+  lab_accreditation: string;
+  created_at: string;
+}
+
+export interface EnvironmentalAccountingEstimate {
+  id: string;
+  plot_id: string;
+  season: string;
+  year: number;
+  fertilizer_n2o_kg_co2e: number;
+  paddy_ch4_kg_co2e: number;
+  fuel_combustion_kg_co2e: number;
+  total_emissions_kg_co2e: number;
+  emission_intensity_kg_co2e_per_kg?: number;
+  is_certified: boolean;
+  scientific_disclaimer: string;
+}
+
+export interface SeasonalSustainabilityScorecard {
+  plot_id: string;
+  season: string;
+  year: number;
+  sustainability_index: number;
+  soil_cover_score: number;
+  water_efficiency_score: number;
+  nutrient_balance_score: number;
+  ipm_adoption_score: number;
+  biodiversity_score: number;
+  verified_practices: string[];
+  disclaimer: string;
+}
+
+export interface ResilienceScenarioSimulation {
+  id: string;
+  assessment_id: string;
+  package_name: string;
+  simulated_overall_score: number;
+  projected_water_saving_percent: number;
+  cost_delta_inr: number;
+  yield_risk_reduction_percent: number;
+  simulated_at: string;
+}
+
+export interface ResilienceAssessment {
+  id: string;
+  plot_id: string;
+  overall_resilience_score: number;
+  soil_score: number;
+  water_score: number;
+  climate_score: number;
+  nutrient_score: number;
+  practice_score: number;
+  evidence_quality_score: number;
+  confidence_category: string;
+  top_vulnerabilities_json: string;
+  adaptation_recommendations_json: string;
+  evaluated_at: string;
+  simulations: ResilienceScenarioSimulation[];
+}
