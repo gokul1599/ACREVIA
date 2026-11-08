@@ -35,6 +35,14 @@ from backend.app.api.v1.endpoints.optimization import router as optimization_rou
 from backend.app.api.v1.endpoints.planning import router as planning_router
 from backend.app.api.v1.endpoints.decisions import router as decisions_router
 
+# Stage 11 Routers (Agricultural Economics, Market Analytics, Harvest & Produce Traceability)
+from backend.app.api.v1.endpoints.ledger import router as ledger_router
+from backend.app.api.v1.endpoints.market import router as market_router
+from backend.app.api.v1.endpoints.harvest import router as harvest_router
+from backend.app.api.v1.endpoints.quality import router as quality_router
+from backend.app.api.v1.endpoints.trace import router as trace_router
+from backend.app.api.v1.endpoints.economics import router as economics_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -66,3 +74,11 @@ api_v1_router.include_router(simulations_router)
 api_v1_router.include_router(optimization_router)
 api_v1_router.include_router(planning_router)
 api_v1_router.include_router(decisions_router)
+
+# Stage 11 Routes
+api_v1_router.include_router(ledger_router)
+api_v1_router.include_router(market_router)
+api_v1_router.include_router(harvest_router)
+api_v1_router.include_router(quality_router)
+api_v1_router.include_router(trace_router)
+api_v1_router.include_router(economics_router)

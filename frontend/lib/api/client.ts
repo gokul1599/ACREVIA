@@ -41,6 +41,21 @@ import type {
   CropTask,
   DecisionRecord,
   DecisionFeedback,
+  FarmExpense,
+  FinancialCorrection,
+  SaleTransaction,
+  MarketPriceObservation,
+  MarketCompareResponse,
+  HarvestPlan,
+  HarvestSession,
+  ProduceLot,
+  LotMovement,
+  ProduceLotPublic,
+  QualityMeasurement,
+  StorageLocation,
+  StorageLot,
+  EconomicsSummary,
+  CropLossEvidencePackage,
 } from "./types.ts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -724,6 +739,237 @@ class ApiClient {
     }
   ): Promise<DecisionFeedback> {
     return this.request<DecisionFeedback>(`/decisions/${id}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ==========================================
+  // STAGE 11: Agricultural Economics, Market, Harvest & Traceability Methods
+  // ==========================================
+
+  async createExpense(data: {
+    farm_id: string;
+    plot_id?: string;
+    crop_season_id?: string;
+    category: string;
+    description: string;
+    amount: string | number;
+    currency?: string;
+    quantity?: number;
+    unit?: string;
+    transaction_date: string;
+    payment_status?: string;
+    payment_method?: string;
+    vendor_name?: string;
+    receipt_url?: string;
+  }): Promise<FarmExpense> {
+    return this.request<FarmExpense>("/ledger/expenses", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getExpenses(params: {
+    farm_id: string;
+    crop_season_id?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<FarmExpense[]> {
+    const query = new URLSearchParams();
+    query.set("farm_id", params.farm_id);
+    if (params.crop_season_id) query.set("crop_season_id", params.crop_season_id);
+    if (params.category) query.set("category", params.category);
+    if (params.limit) query.set("limit", params.limit.toString());
+    if (params.offset) query.set("offset", params.offset.toString());
+    return this.request<FarmExpense[]>(`/ledger/expenses?${query.toString()}`);
+  }
+
+  async correctExpense(
+    expenseId: string,
+    data: { new_amount: string | number; reason: string }
+  ): Promise<FarmExpense> {
+    return this.request<FarmExpense>(`/ledger/expenses/${expenseId}/correct`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async createSaleTransaction(data: {
+    crop_season_id: string;
+    lot_id?: string;
+    buyer_name: string;
+    buyer_type?: string;
+    quantity_sold: string | number;
+    unit?: string;
+    price_per_unit: string | number;
+    gross_amount: string | number;
+    deductions_amount?: string | number;
+    sale_date: string;
+    payment_status?: string;
+    notes?: string;
+  }): Promise<SaleTransaction> {
+    return this.request<SaleTransaction>("/ledger/sales", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getSales(cropSeasonId: string): Promise<SaleTransaction[]> {
+    return this.request<SaleTransaction[]>(`/ledger/sales?crop_season_id=${encodeURIComponent(cropSeasonId)}`);
+  }
+
+  async getMarketPrices(params?: {
+    crop_id?: string;
+    district?: string;
+    limit?: number;
+  }): Promise<MarketPriceObservation[]> {
+    const query = new URLSearchParams();
+    if (params?.crop_id) query.set("crop_id", params.crop_id);
+    if (params?.district) query.set("district", params.district);
+    if (params?.limit) query.set("limit", params.limit.toString());
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return this.request<MarketPriceObservation[]>(`/market/prices${qs}`);
+  }
+
+  async compareMarketRealizations(params: {
+    crop_id: string;
+    quantity_quintals: string | number;
+    plot_id?: string;
+  }): Promise<MarketCompareResponse> {
+    const query = new URLSearchParams();
+    query.set("crop_id", params.crop_id);
+    query.set("quantity_quintals", params.quantity_quintals.toString());
+    if (params.plot_id) query.set("plot_id", params.plot_id);
+    return this.request<MarketCompareResponse>(`/market/compare?${query.toString()}`);
+  }
+
+  async createHarvestPlan(data: {
+    plot_id: string;
+    crop_season_id: string;
+    planned_start_date: string;
+    planned_end_date: string;
+    estimated_quantity_quintals: string | number;
+    harvest_method?: string;
+  }): Promise<HarvestPlan> {
+    return this.request<HarvestPlan>("/harvest/plans", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getHarvestPlans(cropSeasonId: string): Promise<HarvestPlan[]> {
+    return this.request<HarvestPlan[]>(`/harvest/plans?crop_season_id=${encodeURIComponent(cropSeasonId)}`);
+  }
+
+  async createHarvestSession(data: {
+    plot_id: string;
+    crop_season_id: string;
+    harvest_plan_id?: string;
+    picking_number?: number;
+    harvest_date: string;
+    harvested_quantity: string | number;
+    unit?: string;
+    quantity_type?: string;
+    loss_quantity?: string | number;
+    notes?: string;
+  }): Promise<HarvestSession> {
+    return this.request<HarvestSession>("/harvest/sessions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getHarvestSessions(cropSeasonId: string): Promise<HarvestSession[]> {
+    return this.request<HarvestSession[]>(`/harvest/sessions?crop_season_id=${encodeURIComponent(cropSeasonId)}`);
+  }
+
+  async recordQualityMeasurement(data: {
+    session_id?: string;
+    lot_id?: string;
+    parameter_name: string;
+    measured_value: string | number;
+    unit: string;
+    measurement_method?: string;
+    instrument_details?: string;
+  }): Promise<QualityMeasurement> {
+    return this.request<QualityMeasurement>("/quality/measurements", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getLotQualityMeasurements(lotId: string): Promise<QualityMeasurement[]> {
+    return this.request<QualityMeasurement[]>(`/quality/measurements/${encodeURIComponent(lotId)}`);
+  }
+
+  async createStorageLocation(data: {
+    farm_id: string;
+    name: string;
+    storage_type: string;
+    capacity_quintals: string | number;
+    district: string;
+    is_temperature_controlled?: boolean;
+  }): Promise<StorageLocation> {
+    return this.request<StorageLocation>("/quality/storage/locations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async assignToStorage(data: {
+    lot_id: string;
+    storage_location_id: string;
+    quantity_stored: string | number;
+    unit?: string;
+    entry_date: string;
+  }): Promise<StorageLot> {
+    return this.request<StorageLot>("/quality/storage/lots", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getProduceLot(lotId: string): Promise<ProduceLot> {
+    return this.request<ProduceLot>(`/trace/lots/${encodeURIComponent(lotId)}`);
+  }
+
+  async recordLotMovement(
+    lotId: string,
+    data: {
+      movement_type: string;
+      source_location: string;
+      destination_location: string;
+      quantity_transferred: string | number;
+      unit?: string;
+      actor_name: string;
+      notes?: string;
+    }
+  ): Promise<LotMovement> {
+    return this.request<LotMovement>(`/trace/lots/${encodeURIComponent(lotId)}/movements`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async verifyPublicQrCode(qrToken: string): Promise<ProduceLotPublic> {
+    return this.request<ProduceLotPublic>(`/trace/public/${encodeURIComponent(qrToken)}`);
+  }
+
+  async getSeasonEconomics(cropSeasonId: string): Promise<EconomicsSummary> {
+    return this.request<EconomicsSummary>(`/economics/seasons/${encodeURIComponent(cropSeasonId)}`);
+  }
+
+  async createLossEvidencePackage(data: {
+    farm_id: string;
+    plot_id: string;
+    crop_season_id: string;
+    incident_date: string;
+    incident_type: string;
+    notes?: string;
+  }): Promise<CropLossEvidencePackage> {
+    return this.request<CropLossEvidencePackage>("/economics/evidence-package", {
       method: "POST",
       body: JSON.stringify(data),
     });

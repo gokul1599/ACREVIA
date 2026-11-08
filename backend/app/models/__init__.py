@@ -43,6 +43,15 @@ from backend.app.models.optimization import OptimizationProblem, OptimizationRes
 from backend.app.models.crop_planning import CropCalendarDefinition, CropTask
 from backend.app.models.decision_intelligence import DecisionRecord, DecisionFeedback
 
+# Stage 11 Models (Agricultural Economics, Market Analytics & Produce Traceability)
+from backend.app.models.financial_ledger import FarmExpense, FinancialCorrection, SaleTransaction
+from backend.app.models.market_intelligence import MarketLocation, MarketCommodity, MarketPriceObservation
+from backend.app.models.harvest_operations import HarvestPlan, HarvestSession
+from backend.app.models.produce_traceability import ProduceLot, LotMovement
+from backend.app.models.post_harvest import ProduceQualityProfile, QualityMeasurement, StorageLocation, StorageLot
+from backend.app.models.crop_economics import CropSeasonEconomics
+from backend.app.models.evidence_package import CropLossEvidencePackage
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -116,4 +125,21 @@ __all__ = [
     "CropTask",
     "DecisionRecord",
     "DecisionFeedback",
+    # Stage 11 exports
+    "FarmExpense",
+    "FinancialCorrection",
+    "SaleTransaction",
+    "MarketLocation",
+    "MarketCommodity",
+    "MarketPriceObservation",
+    "HarvestPlan",
+    "HarvestSession",
+    "ProduceLot",
+    "LotMovement",
+    "ProduceQualityProfile",
+    "QualityMeasurement",
+    "StorageLocation",
+    "StorageLot",
+    "CropSeasonEconomics",
+    "CropLossEvidencePackage",
 ]

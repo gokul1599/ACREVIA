@@ -738,3 +738,268 @@ export interface DecisionFeedback {
   observed_outcome?: string;
   recorded_at: string;
 }
+
+// ==========================================
+// STAGE 11: Agricultural Economics, Market Analytics, Harvest & Produce Traceability
+// ==========================================
+
+export interface FinancialCorrection {
+  id: string;
+  expense_id: string;
+  previous_amount: string;
+  new_amount: string;
+  reason: string;
+  corrected_by_user_id?: string;
+  corrected_at: string;
+}
+
+export interface FarmExpense {
+  id: string;
+  farm_id: string;
+  plot_id?: string;
+  crop_season_id?: string;
+  category: "SEEDS" | "FERTILIZERS" | "PESTICIDES" | "LABOUR" | "MACHINERY" | "IRRIGATION" | "TRANSPORT" | "STORAGE" | "MISCELLANEOUS";
+  description: string;
+  amount: string;
+  currency: string;
+  quantity?: number;
+  unit?: string;
+  transaction_date: string;
+  payment_status: "PAID" | "PENDING" | "PARTIAL";
+  payment_method?: string;
+  vendor_name?: string;
+  receipt_url?: string;
+  created_by_user_id?: string;
+  verification_state: "UNVERIFIED" | "PENDING_REVIEW" | "VERIFIED" | "FLAGGED";
+  created_at: string;
+  updated_at: string;
+  corrections?: FinancialCorrection[];
+}
+
+export interface SaleTransaction {
+  id: string;
+  crop_season_id: string;
+  lot_id?: string;
+  buyer_name: string;
+  buyer_type: "MANDI_TRADER" | "VILLAGE_AGGREGATOR" | "COOPERATIVE" | "CORPORATE_PROCESSOR";
+  quantity_sold: string;
+  unit: string;
+  price_per_unit: string;
+  gross_amount: string;
+  deductions_amount: string;
+  net_amount: string;
+  sale_date: string;
+  payment_status: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface MarketLocation {
+  id: string;
+  market_code: string;
+  market_name: string;
+  district: string;
+  state: string;
+  latitude: string;
+  longitude: string;
+  is_active: boolean;
+}
+
+export interface MarketCommodity {
+  id: string;
+  commodity_name: string;
+  canonical_crop_id: string;
+  variety_name?: string;
+  grade?: string;
+}
+
+export interface MarketPriceObservation {
+  id: string;
+  market_id: string;
+  commodity_id: string;
+  min_price: string;
+  max_price: string;
+  modal_price: string;
+  price_unit: string;
+  arrival_quantity_quintals: string;
+  observation_date: string;
+  source_provider: string;
+  retrieved_at: string;
+  market?: MarketLocation;
+  commodity?: MarketCommodity;
+}
+
+export interface MarketComparisonItem {
+  market_id: string;
+  market_name: string;
+  district: string;
+  distance_km: number;
+  modal_price_per_quintal: string;
+  min_price_per_quintal: string;
+  max_price_per_quintal: string;
+  gross_value: string;
+  estimated_transport_cost: string;
+  estimated_mandi_cess: string;
+  estimated_handling_charges: string;
+  estimated_net_realization: string;
+  effective_rate_per_quintal: string;
+  observation_date: string;
+  disclaimer: string;
+}
+
+export interface MarketCompareResponse {
+  canonical_crop_id: string;
+  quantity_quintals: string;
+  plot_id?: string;
+  comparisons: MarketComparisonItem[];
+}
+
+export interface HarvestPlan {
+  id: string;
+  plot_id: string;
+  crop_season_id: string;
+  planned_start_date: string;
+  planned_end_date: string;
+  estimated_quantity_quintals: string;
+  harvest_method: "MANUAL" | "MECHANICAL" | "COMBINED";
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  created_at: string;
+}
+
+export interface HarvestSession {
+  id: string;
+  plot_id: string;
+  crop_season_id: string;
+  harvest_plan_id?: string;
+  picking_number: number;
+  harvest_date: string;
+  harvested_quantity: string;
+  unit: string;
+  quantity_type: "MEASURED" | "ESTIMATED_QUANTITY";
+  loss_quantity: string;
+  notes?: string;
+  recorded_by_user_id?: string;
+  created_at: string;
+  produce_lot_id?: string;
+  lot_code?: string;
+}
+
+export interface LotMovement {
+  id: string;
+  lot_id: string;
+  movement_type: "HARVEST_IN" | "STORAGE_ENTRY" | "TRANSFER" | "SALE" | "SPLIT" | "DISCARD";
+  source_location: string;
+  destination_location: string;
+  quantity_transferred: string;
+  unit: string;
+  actor_name: string;
+  movement_timestamp: string;
+  notes?: string;
+}
+
+export interface ProduceLot {
+  id: string;
+  lot_code: string;
+  qr_token: string;
+  farm_id: string;
+  plot_id: string;
+  crop_season_id: string;
+  harvest_session_id?: string;
+  crop_id: string;
+  variety_name?: string;
+  harvest_date: string;
+  initial_quantity: string;
+  remaining_quantity: string;
+  unit: string;
+  current_status: "ACTIVE" | "STORED" | "PARTIALLY_SOLD" | "COMPLETELY_SOLD" | "EXPIRED";
+  created_at: string;
+  movements?: LotMovement[];
+}
+
+export interface ProduceLotPublic {
+  lot_code: string;
+  crop_name: string;
+  variety?: string;
+  harvest_date: string;
+  district: string;
+  state: string;
+  origin_verification: string;
+  quality_parameters: Array<{
+    parameter_name: string;
+    measured_value: string;
+    unit: string;
+    method: string;
+  }>;
+  overall_grade: string;
+  traceability_status: string;
+  public_notice: string;
+}
+
+export interface QualityMeasurement {
+  id: string;
+  session_id?: string;
+  lot_id?: string;
+  parameter_name: string;
+  measured_value: string;
+  unit: string;
+  measurement_method: "MEASURED_DIGITAL_SENSOR" | "VERIFIED_LAB_ASSAY" | "FARMER_VISUAL_ESTIMATE";
+  instrument_details?: string;
+  measured_at: string;
+}
+
+export interface StorageLocation {
+  id: string;
+  farm_id: string;
+  name: string;
+  storage_type: "ON_FARM_SHED" | "HERMETIC_BAGS" | "COMMERCIAL_COLD_STORAGE" | "CWC_TSWC_WAREHOUSE";
+  capacity_quintals: string;
+  district: string;
+  is_temperature_controlled: boolean;
+}
+
+export interface StorageLot {
+  id: string;
+  lot_id: string;
+  storage_location_id: string;
+  quantity_stored: string;
+  unit: string;
+  entry_date: string;
+  exit_date?: string;
+  current_status: string;
+}
+
+export interface ExpenseCategoryBreakdown {
+  category: string;
+  total_amount: string;
+  percentage_of_total: string;
+}
+
+export interface EconomicsSummary {
+  crop_season_id: string;
+  crop_name: string;
+  total_expenses: string;
+  gross_revenue: string;
+  net_realization: string;
+  total_harvest_quantity: string;
+  total_sold_quantity: string;
+  unit: string;
+  cost_per_unit: string;
+  net_margin_per_unit: string;
+  data_completeness_pct: string;
+  completeness_badge: "COMPLETE" | "PARTIAL_DATA" | "MINIMAL_DATA";
+  category_breakdown: ExpenseCategoryBreakdown[];
+  missing_categories: string[];
+  economic_disclaimers: string[];
+}
+
+export interface CropLossEvidencePackage {
+  id: string;
+  farm_id: string;
+  plot_id: string;
+  crop_season_id: string;
+  incident_date: string;
+  incident_type: string;
+  package_payload: Record<string, any>;
+  package_hash: string;
+  generated_at: string;
+}
