@@ -56,3 +56,13 @@ class ServiceUnavailableException(AcreviaException):
             status_code=503,
             details={"service": service_name}
         )
+
+
+class RateLimitExceededException(AcreviaException):
+    def __init__(self, message: str = "Rate limit exceeded. Please try again later.", retry_after: int = 60):
+        super().__init__(
+            message=message,
+            status_code=429,
+            details={"retry_after_seconds": retry_after}
+        )
+

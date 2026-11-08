@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="ACREVIA API",
     description="ACREVIA - Agricultural Intelligence Platform for Smallholder Farmers (Telangana, India)",
-    version="1.0.0-stage4",
+    version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -56,6 +56,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next) -> Response:
+    """
+    Applies production-grade security headers according to OWASP guidelines.
+    """
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(self), microphone=(self)"
+    if settings.ENVIRONMENT == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.middleware("http")
@@ -99,7 +115,7 @@ def health_check():
     return {
         "status": "HEALTHY",
         "service": "acrevia-backend",
-        "version": "1.0.0-stage4"
+        "version": "1.0.0"
     }
 
 

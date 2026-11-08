@@ -15,11 +15,12 @@ from backend.app.schemas.auth import (
 )
 from backend.app.services.auth_service import AuthService
 from backend.app.security.dependencies import get_current_user
+from backend.app.core.rate_limit import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit(max_requests=30, window_seconds=60))])
 def register(
     data: UserRegisterRequest,
     db: Session = Depends(get_db)
@@ -30,7 +31,7 @@ def register(
     return AuthService.register_user(db=db, req=data)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit(max_requests=30, window_seconds=60))])
 def login(
     data: UserLoginRequest,
     db: Session = Depends(get_db)

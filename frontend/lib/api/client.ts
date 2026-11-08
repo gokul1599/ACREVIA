@@ -464,6 +464,31 @@ class ApiClient {
   async getInterventionTimeline(interventionId: string): Promise<InterventionTimeline> {
     return this.request<InterventionTimeline>(`/interventions/${interventionId}/timeline`);
   }
+
+  async getSystemInfo(): Promise<{
+    project_name: string;
+    description: string;
+    target_geography: string;
+    supported_crops: string[];
+    supported_languages: string[];
+    version: string;
+    status: string;
+  }> {
+    return this.request("/system/info");
+  }
+
+  async getSystemObservability(): Promise<{
+    service: string;
+    version: string;
+    environment: string;
+    database_pool: Record<string, number>;
+    supported_crops: string[];
+    supported_languages: string[];
+    storage_provider: string;
+    status: string;
+  }> {
+    return this.request("/system/observability");
+  }
 }
 
 export const api = new ApiClient();
