@@ -22,10 +22,11 @@ if db_url.startswith("sqlite"):
     if ":memory:" in db_url:
         pool_kwargs = {"poolclass": StaticPool}
 else:
-    # Check if standard psycopg2 is loadable without DLL/Application Control blocks
+    # Check if psycopg (v3) is loadable without DLL/Application Control blocks
     use_pg8000 = False
     try:
-        import psycopg2
+        import psycopg
+        from psycopg import pq
     except (ImportError, Exception):
         use_pg8000 = True
 

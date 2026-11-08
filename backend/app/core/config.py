@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class Settings(BaseModel):
     # Official Project Identity
