@@ -1218,6 +1218,126 @@ class ApiClient {
       body: JSON.stringify({ plot_id: plotId, package_name: packageName }),
     });
   }
+
+  // Stage 14: Data Exchange & Portability
+  async requestDataExport(data: { farm_id?: string; categories?: string[]; format?: string; redact_pii?: boolean; redact_gps?: boolean }): Promise<any> {
+    return this.request("/exchange/export", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getDataExport(jobId: string): Promise<any> {
+    return this.request(`/exchange/export/${encodeURIComponent(jobId)}`);
+  }
+
+  async requestDataImport(data: { farm_id?: string; format?: string; target_category: string; data_payload: string; mapping_profile_id?: string; preserve_conflicts?: boolean }): Promise<any> {
+    return this.request("/exchange/import", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getDataImport(jobId: string): Promise<any> {
+    return this.request(`/exchange/import/${encodeURIComponent(jobId)}`);
+  }
+
+  async createMappingProfile(data: any): Promise<any> {
+    return this.request("/exchange/mapping-profiles", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async listMappingProfiles(): Promise<any> {
+    return this.request("/exchange/mapping-profiles");
+  }
+
+  // Stage 14: Partner Ecosystem & Integration
+  async listPartners(status?: string, partnerType?: string): Promise<any> {
+    let url = "/partners";
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    if (partnerType) params.append("partner_type", partnerType);
+    if (params.toString()) url += `?${params.toString()}`;
+    return this.request(url);
+  }
+
+  async registerPartner(data: any): Promise<any> {
+    return this.request("/partners/register", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getPartner(partnerId: string): Promise<any> {
+    return this.request(`/partners/${encodeURIComponent(partnerId)}`);
+  }
+
+  async verifyPartner(partnerId: string, data: any): Promise<any> {
+    return this.request(`/partners/${encodeURIComponent(partnerId)}/verify`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async addPartnerIntegration(partnerId: string, data: any): Promise<any> {
+    return this.request(`/partners/${encodeURIComponent(partnerId)}/integrations`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async listPartnerIntegrations(partnerId: string): Promise<any> {
+    return this.request(`/partners/${encodeURIComponent(partnerId)}/integrations`);
+  }
+
+  // Stage 14: Developer Portal & Scoped API Credentials
+  async listDeveloperApplications(): Promise<any> {
+    return this.request("/developer/applications");
+  }
+
+  async createDeveloperApplication(data: any): Promise<any> {
+    return this.request("/developer/applications", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async generateApiCredential(appId: string, data: any): Promise<any> {
+    return this.request(`/developer/applications/${encodeURIComponent(appId)}/credentials`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async revokeApiCredential(credId: string): Promise<any> {
+    return this.request(`/developer/credentials/${encodeURIComponent(credId)}`, { method: "DELETE" });
+  }
+
+  // Stage 14: Farmer Consent & Data Sharing Grants
+  async listConsentGrants(): Promise<any> {
+    return this.request("/consent/grants");
+  }
+
+  async grantConsent(data: any): Promise<any> {
+    return this.request("/consent/grants", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async revokeConsent(grantId: string, reason: string): Promise<any> {
+    return this.request(`/consent/grants/${encodeURIComponent(grantId)}/revoke`, { method: "POST", body: JSON.stringify({ reason }) });
+  }
+
+  // Stage 14: Webhooks & Outbox Events
+  async listWebhookEndpoints(): Promise<any> {
+    return this.request("/webhooks/endpoints");
+  }
+
+  async registerWebhookEndpoint(data: any): Promise<any> {
+    return this.request("/webhooks/endpoints", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async deactivateWebhookEndpoint(endpointId: string): Promise<any> {
+    return this.request(`/webhooks/endpoints/${encodeURIComponent(endpointId)}`, { method: "DELETE" });
+  }
+
+  async listWebhookDeliveries(): Promise<any> {
+    return this.request("/webhooks/deliveries");
+  }
+
+  async retryWebhookDelivery(deliveryId: string): Promise<any> {
+    return this.request(`/webhooks/deliveries/${encodeURIComponent(deliveryId)}/retry`, { method: "POST" });
+  }
+
+  // Stage 14: Canonical Standards & Connector Health
+  async convertUnit(data: { value: number; from_unit: string; to_unit: string; category?: string }): Promise<any> {
+    return this.request("/standards/convert-unit", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async getCropTaxonomy(cropCode?: string): Promise<any> {
+    const url = cropCode ? `/standards/taxonomy/crops/${encodeURIComponent(cropCode)}` : "/standards/taxonomy/crops";
+    return this.request(url);
+  }
+
+  async getConnectorHealth(): Promise<any> {
+    return this.request("/standards/health");
+  }
 }
 
 export const api = new ApiClient();

@@ -59,6 +59,14 @@ from backend.app.api.v1.endpoints.nutrient import router as nutrient_router
 from backend.app.api.v1.endpoints.sustain import router as sustain_router
 from backend.app.api.v1.endpoints.resilience import router as resilience_router
 
+# Stage 14 Routers (Interoperability, Open API, Partner Integrations & Data Exchange)
+from backend.app.api.v1.endpoints.exchange import router as exchange_router
+from backend.app.api.v1.endpoints.partners import router as partners_router
+from backend.app.api.v1.endpoints.developer import router as developer_router
+from backend.app.api.v1.endpoints.consent_grants import router as consent_grants_router
+from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
+from backend.app.api.v1.endpoints.standards import router as standards_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -114,3 +122,11 @@ api_v1_router.include_router(climate_router)
 api_v1_router.include_router(nutrient_router)
 api_v1_router.include_router(sustain_router)
 api_v1_router.include_router(resilience_router)
+
+# Stage 14 Routes (Agricultural Interoperability, Open API & Partner Integrations)
+api_v1_router.include_router(exchange_router)
+api_v1_router.include_router(partners_router)
+api_v1_router.include_router(developer_router)
+api_v1_router.include_router(consent_grants_router)
+api_v1_router.include_router(webhooks_router)
+api_v1_router.include_router(standards_router)

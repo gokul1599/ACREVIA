@@ -74,6 +74,22 @@ from backend.app.models.sustainability import (
 )
 from backend.app.models.resilience_assessment import ResilienceAssessment, ResilienceScenarioSimulation
 
+# Stage 14 Models (Agricultural Interoperability, Open API & Partner Ecosystem)
+from backend.app.models.interoperability import (
+    IntegrationPartner,
+    PartnerIntegration,
+    ApiApplication,
+    ApiCredential,
+    DataSharingGrant,
+    WebhookEndpoint,
+    WebhookEvent,
+    WebhookDelivery,
+)
+from backend.app.models.exchange import (
+    DataExchangeJob,
+    DataMappingProfile,
+)
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -207,4 +223,15 @@ __all__ = [
     "SUSTAINABILITY_RESEARCH_DISCLAIMER",
     "ResilienceAssessment",
     "ResilienceScenarioSimulation",
+    # Stage 14 exports
+    "IntegrationPartner",
+    "PartnerIntegration",
+    "ApiApplication",
+    "ApiCredential",
+    "DataSharingGrant",
+    "WebhookEndpoint",
+    "WebhookEvent",
+    "WebhookDelivery",
+    "DataExchangeJob",
+    "DataMappingProfile",
 ]

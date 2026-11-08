@@ -1465,3 +1465,137 @@ export interface ResilienceAssessment {
   evaluated_at: string;
   simulations: ResilienceScenarioSimulation[];
 }
+
+// Stage 14 Interoperability & Open API Ecosystem Types
+export interface IntegrationPartner {
+  id: string;
+  name: string;
+  partner_type: "LABORATORY" | "UNIVERSITY" | "KVK" | "WEATHER_PROVIDER" | "SATELLITE_PROVIDER" | "IOT_MANUFACTURER" | "FPO" | "RESEARCH_INSTITUTION" | "DEVELOPER";
+  description?: string;
+  website?: string;
+  contact_email: string;
+  contact_phone?: string;
+  legal_entity_number?: string;
+  verification_status: "APPLICATION_SUBMITTED" | "UNDER_REVIEW" | "VERIFIED" | "SUSPENDED" | "REVOKED";
+  verification_notes?: string;
+  verified_at?: string;
+  created_at: string;
+}
+
+export interface PartnerIntegration {
+  id: string;
+  partner_id: string;
+  connector_type: "SOIL_LAB" | "MARKET_DATA" | "WEATHER_STATION" | "SATELLITE_PROVIDER" | "IOT_TELEMETRY" | "KNOWLEDGE_BASE" | "CUSTOM_ADAPTER";
+  display_name: string;
+  capabilities_json: string;
+  status: "ACTIVE" | "PAUSED" | "REVOKED" | "DEPRECATED";
+  health_status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE";
+  last_health_check_at?: string;
+  created_at: string;
+}
+
+export interface ApiApplication {
+  id: string;
+  user_id: string;
+  partner_id?: string;
+  name: string;
+  description?: string;
+  is_sandbox: boolean;
+  is_active: boolean;
+  redirect_uris_json: string;
+  created_at: string;
+}
+
+export interface ApiCredential {
+  id: string;
+  application_id: string;
+  client_id: string;
+  secret_prefix: string;
+  scopes_json: string;
+  rate_limit_per_minute: number;
+  is_active: boolean;
+  expires_at?: string;
+  last_used_at?: string;
+  created_at: string;
+  client_secret?: string;
+}
+
+export interface DataSharingGrant {
+  id: string;
+  user_id: string;
+  partner_id: string;
+  farm_id?: string;
+  plot_id?: string;
+  data_categories_json: string;
+  purpose: string;
+  anonymize_pii: boolean;
+  redact_exact_gps: boolean;
+  is_revoked: boolean;
+  granted_at: string;
+  expires_at?: string;
+  revoked_at?: string;
+  revocation_reason?: string;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  user_id: string;
+  partner_id?: string;
+  url: string;
+  event_types_json: string;
+  is_active: boolean;
+  failure_count: number;
+  last_delivery_at?: string;
+  created_at: string;
+  signing_secret?: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  endpoint_id: string;
+  event_id: string;
+  attempt_number: number;
+  response_status_code?: number;
+  response_body_snippet?: string;
+  duration_ms: number;
+  status: "SUCCESS" | "FAILED" | "RETRY_PENDING";
+  delivered_at: string;
+}
+
+export interface DataExchangeJob {
+  id: string;
+  user_id: string;
+  farm_id?: string;
+  job_type: "EXPORT" | "IMPORT";
+  format: "JSON" | "CSV" | "GEOJSON" | "ARCHIVE";
+  categories_json: string;
+  status: "REQUESTED" | "PROCESSING" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "CANCELLED";
+  records_processed: number;
+  records_failed: number;
+  conflicts_detected: number;
+  manifest_json: string;
+  checksum_sha256?: string;
+  error_message?: string;
+  expires_at?: string;
+  created_at: string;
+}
+
+export interface DataMappingProfile {
+  id: string;
+  user_id: string;
+  name: string;
+  source_format: string;
+  target_entity: string;
+  mapping_rules_json: string;
+  created_at: string;
+}
+
+export interface UnitConversionResult {
+  original_value: number;
+  original_unit: string;
+  converted_value: number;
+  converted_unit: string;
+  category: string;
+  conversion_factor: number;
+}
+
