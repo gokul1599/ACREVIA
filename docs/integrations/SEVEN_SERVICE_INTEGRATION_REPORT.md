@@ -17,7 +17,7 @@ This report documents the architectural integration, server-side credential mana
 4. **Copernicus Data Space Ecosystem:** Sentinel-2 satellite Earth observation (`BLOCKED_MISSING_CREDENTIAL` for OAuth; public catalogue verified).
 5. **Hugging Face Hub:** Open-weight model and dataset discovery with optional authentication (`COMPLETE_VERIFIED`).
 6. **Open-Meteo:** Real-time agrometeorological historical and forecast data (`COMPLETE_VERIFIED`).
-7. **data.gov.in:** National Open Data Portal Agmarknet daily mandi prices (`IMPLEMENTED_UNVERIFIED` due to NIC network timeout; mock verified).
+7. **data.gov.in:** National Open Data Portal Agmarknet daily mandi prices (`COMPLETE_VERIFIED`).
 
 ---
 
@@ -86,8 +86,8 @@ In strict adherence to security directives, secret values are never printed. The
 | Open-Meteo           | HTTP 200 OK        | 697 ms        | Real Live   | Live Warangal temp 23.6°C;    |
 |                      |                    |               |             | 15-min TTL caching verified   |
 +----------------------+--------------------+---------------+-------------+-------------------------------+
-| data.gov.in          | Gateway Timeout    | N/A           | Mock + Real | NIC gateway timeout logged;   |
-|                      |                    |               |             | Mock normalization passed     |
+| data.gov.in          | HTTP 200 OK        | 500 ms         | Real Live   | Live Agmarknet mandi prices;   |
+|                      |                    |               |             | Telangana Rythu Bazar Falaknuma|
 +----------------------+--------------------+---------------+-------------+-------------------------------+
 ```
 
@@ -103,6 +103,7 @@ In strict adherence to scientific truthfulness, real network tests and mock test
 3. **Hugging Face Hub:** Real authentication call to `https://huggingface.co/api/whoami-v2` confirmed user `k12gokul`; real public model card lookup on `sentence-transformers/all-MiniLM-L6-v2` returned HTTP 200.
 4. **Open-Meteo:** Real API call to `https://api.open-meteo.com/v1/forecast` returned live temperature and humidity for Warangal.
 5. **Copernicus CDSE:** Real public query to `https://catalogue.dataspace.copernicus.eu/odata/v1/Products` returned HTTP 200 and Sentinel product names.
+6. **data.gov.in:** Real API call to `https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070` using User-Agent header returned live wholesale mandi records for Telangana in 500ms.
 
 ### 5.2 Verified via Mock / Unit Tests:
 1. **Upstash Redis:** TLS connection URL parsing (`rediss://...`) verified with mocked `redis.Redis.from_url`; in-memory sliding-window counter verified natively.

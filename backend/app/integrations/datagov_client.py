@@ -21,6 +21,9 @@ class DataGovClient:
     Queries authorized Agmarknet daily mandi prices with non-negotiable provenance tracking.
     """
     BASE_URL = "https://api.data.gov.in/resource"
+    DEFAULT_HEADERS = {
+        "User-Agent": "AcreviaPlatform/1.0 (Telangana Agricultural Intelligence; mailto:support@acrevia.gov.in)"
+    }
 
     def __init__(
         self,
@@ -56,7 +59,7 @@ class DataGovClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=min(self.timeout, 5.0)) as client:
+            async with httpx.AsyncClient(timeout=max(self.timeout, 10.0), headers=self.DEFAULT_HEADERS) as client:
                 t0 = time.time()
                 resp = await client.get(url, params=params)
                 latency_ms = round((time.time() - t0) * 1000, 1)
@@ -132,7 +135,7 @@ class DataGovClient:
             params["filters[commodity.keyword]"] = commodity
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=max(self.timeout, 15.0), headers=self.DEFAULT_HEADERS) as client:
                 t0 = time.time()
                 resp = await client.get(url, params=params)
                 latency_ms = round((time.time() - t0) * 1000, 1)

@@ -264,5 +264,8 @@ class MarketService:
         limit: int = 20
     ) -> Dict[str, Any]:
         """Ingests live official Agmarknet mandi arrivals and modal prices from data.gov.in."""
-        from backend.app.integrations.datagov_client import datagov_client
+        try:
+            from app.integrations.datagov_client import datagov_client
+        except ImportError:
+            from backend.app.integrations.datagov_client import datagov_client
         return await datagov_client.fetch_telangana_mandi_prices(commodity=commodity, limit=limit)

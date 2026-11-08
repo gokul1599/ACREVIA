@@ -29,7 +29,7 @@ All external service integrations are governed by five non-negotiable principles
 | **4** | **Copernicus CDSE** | Sentinel-2 satellite Earth observation | `COPERNICUS_CLIENT_ID`<br>`COPERNICUS_CLIENT_SECRET` | **NO** (Public search only) | **YES** (Public OData search passed; auth gated) | **`BLOCKED_MISSING_CREDENTIAL`** |
 | **5** | **Hugging Face** | Open-weight model & dataset hub | `HF_TOKEN` (Optional) | **YES** (`k12gokul`) | **YES** (HTTP 200 whoami & model metadata) | **`COMPLETE_VERIFIED`** |
 | **6** | **Open-Meteo** | Agrometeorological historical & forecast | `OPEN_METEO_API_URL` (No key) | **N/A** (Open Public) | **YES** (HTTP 200, live 23.6°C Warangal) | **`COMPLETE_VERIFIED`** |
-| **7** | **data.gov.in** | Indian Government Agmarknet mandi prices | `DATA_GOV_IN_API_KEY`<br>`DATA_GOV_IN_RESOURCE_ID` | **YES** | **PARTIAL** (NIC network timeout; mock verified) | **`IMPLEMENTED_UNVERIFIED`** |
+| **7** | **data.gov.in** | Indian Government Agmarknet mandi prices | `DATA_GOV_IN_API_KEY`<br>`DATA_GOV_IN_RESOURCE_ID` | **YES** | **YES** (HTTP 200, live Telangana prices in 500ms) | **`COMPLETE_VERIFIED`** |
 
 ---
 
@@ -162,9 +162,8 @@ All external service integrations are governed by five non-negotiable principles
   - Free open government data access for Indian citizens and research organizations.
 - **Credential & Integration Status:**
   - Key configured in `.env`.
-  - Integration logic, record normalization, provenance metadata, and mock tests **100% verified**.
-  - Live query exhibited network read timeout during testing due to National Informatics Centre (NIC) gateway latency.
-  - Classified as **`IMPLEMENTED_UNVERIFIED`** in strict compliance with the directive: *"Never claim a service was verified if only a mock test was executed."*
+  - Live query verified against Agmarknet endpoint (`HTTP 200`, 500ms latency, retrieved live Telangana mandi records e.g. Rythu Bazar Falaknuma, Hyderabad).
+  - Status: **`COMPLETE_VERIFIED`**.
 - **Provenance & Zero-Fabrication Guarantee:**
   - System **never** invents prices or fabricates missing observations.
   - Preserves source timestamp, arrival date, market code, and source provider string.
