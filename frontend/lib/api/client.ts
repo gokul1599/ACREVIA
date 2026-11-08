@@ -1,4 +1,4 @@
-import {
+import type {
   TokenResponse,
   UserSummary,
   Farm,
@@ -9,7 +9,19 @@ import {
   Diagnosis,
   KnowledgeQueryResponse,
   FarmWeatherReport,
-} from "./types";
+  FarmRiskOverview,
+  RiskAssessment,
+  RiskAlert,
+  RiskRule,
+  ExpertProfile,
+  ExpertCaseItem,
+  ExpertCaseDossier,
+  ExpertAssessment,
+  ExpertAssessmentRevision,
+  InterventionRecord,
+  OutcomeObservation,
+  InterventionTimeline,
+} from "./types.ts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -98,29 +110,35 @@ class ApiClient {
 
   async register(data: {
     phone: string;
-    full_name: string;
     password: string;
+    full_name: string;
     email?: string;
-    language_preference?: string;
+    language_preference?: "te" | "en" | "hi" | string;
     role?: string;
-  }): Promise<UserSummary> {
-    return this.request<UserSummary>("/auth/register", {
+  }): Promise<TokenResponse> {
+    const res = await this.request<TokenResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
+    this.setToken(res.access_token);
+    return res;
   }
 
-  async getCurrentUser(): Promise<UserSummary> {
+  async getMe(): Promise<UserSummary> {
     return this.request<UserSummary>("/auth/me");
   }
 
-  // --- Farms ---
-  async listFarms(): Promise<Farm[]> {
-    return this.request<Farm[]>("/farms/");
+  async getCurrentUser(): Promise<UserSummary> {
+    return this.getMe();
   }
 
-  async getFarm(farmId: string): Promise<Farm> {
-    return this.request<Farm>(`/farms/${farmId}`);
+  logout() {
+    this.setToken(null);
+  }
+
+  // --- Farms & Plots ---
+  async listFarms(): Promise<Farm[]> {
+    return this.request<Farm[]>("/farms/");
   }
 
   async createFarm(data: {
@@ -128,7 +146,8 @@ class ApiClient {
     district: string;
     mandal: string;
     village: string;
-    total_acreage?: number;
+    total_acreage: number;
+    state?: string;
   }): Promise<Farm> {
     return this.request<Farm>("/farms/", {
       method: "POST",
@@ -136,14 +155,22 @@ class ApiClient {
     });
   }
 
-  // --- Plots ---
+  async getFarm(farmId: string): Promise<Farm> {
+    return this.request<Farm>(`/farms/${farmId}`);
+  }
+
   async listPlots(farmId: string): Promise<Plot[]> {
     return this.request<Plot[]>(`/farms/${farmId}/plots`);
   }
 
   async createPlot(
     farmId: string,
-    data: { name: string; soil_type: string; irrigation_source: string; acreage?: number }
+    data: {
+      name: string;
+      soil_type?: string;
+      irrigation_source?: string;
+      acreage?: number;
+    }
   ): Promise<Plot> {
     return this.request<Plot>(`/farms/${farmId}/plots`, {
       method: "POST",
@@ -151,28 +178,44 @@ class ApiClient {
     });
   }
 
-  // --- Crop Seasons ---
-  async listCropSeasons(plotId: string): Promise<CropSeason[]> {
+  async listSeasons(plotId: string): Promise<CropSeason[]> {
     return this.request<CropSeason[]>(`/plots/${plotId}/seasons`);
+  }
+
+  async listCropSeasons(plotId: string): Promise<CropSeason[]> {
+    return this.listSeasons(plotId);
+  }
+
+  async createSeason(
+    plotId: string,
+    data: {
+      crop_id: string;
+      season_type: string;
+      sowing_date: string;
+      current_stage: string;
+    }
+  ): Promise<CropSeason> {
+    return this.request<CropSeason>(`/plots/${plotId}/seasons`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
   async createCropSeason(
     plotId: string,
-    data: { crop_id: string; season_type: string; sowing_date: string; current_stage?: string }
+    data: {
+      crop_id: string;
+      season_type: string;
+      sowing_date: string;
+      current_stage: string;
+    }
   ): Promise<CropSeason> {
-    return this.request<CropSeason>(`/plots/${plotId}/seasons`, {
-      method: "POST",
-      body: JSON.stringify({ ...data, plot_id: plotId }),
-    });
+    return this.createSeason(plotId, data);
   }
 
   // --- Observations ---
   async listObservations(farmId: string, limit: number = 20): Promise<Observation[]> {
-    return this.request<Observation[]>(`/observations/?farm_id=${encodeURIComponent(farmId)}&limit=${limit}`);
-  }
-
-  async getObservation(obsId: string): Promise<Observation> {
-    return this.request<Observation>(`/observations/${obsId}`);
+    return this.request<Observation[]>(`/observations/?farm_id=${farmId}&limit=${limit}`);
   }
 
   async createObservation(data: {
@@ -190,8 +233,8 @@ class ApiClient {
 
   async uploadObservationMedia(
     obsId: string,
-    file: File | Blob,
-    filename: string = "foliar.jpg",
+    file: Blob,
+    filename: string = "observation.jpg",
     isPrimary: boolean = true
   ): Promise<ObservationMedia> {
     const formData = new FormData();
@@ -205,7 +248,7 @@ class ApiClient {
   }
 
   getMediaFileUrl(obsId: string, mediaId: string): string {
-    return `${BASE_URL}/api/v1/observations/${obsId}/media/${mediaId}/file`;
+    return `${BASE_URL}/api/v1/observations/${obsId}/media/${mediaId}/stream`;
   }
 
   // --- Diagnoses ---
@@ -255,6 +298,171 @@ class ApiClient {
   // --- Weather ---
   async getFarmWeather(farmId: string): Promise<FarmWeatherReport> {
     return this.request<FarmWeatherReport>(`/farms/${farmId}/weather`);
+  }
+
+  // ================= STAGE 7: RISKCAST API =================
+
+  async getFarmRiskOverview(farmId: string): Promise<FarmRiskOverview> {
+    return this.request<FarmRiskOverview>(`/riskcast/farms/${farmId}/overview`);
+  }
+
+  async evaluatePlotRisk(plotId: string): Promise<RiskAssessment> {
+    return this.request<RiskAssessment>(`/riskcast/evaluate/${plotId}`, {
+      method: "POST",
+    });
+  }
+
+  async listRiskAlerts(farmId: string): Promise<RiskAlert[]> {
+    return this.request<RiskAlert[]>(`/riskcast/alerts?farm_id=${farmId}`);
+  }
+
+  async acknowledgeRiskAlert(alertId: string): Promise<RiskAlert> {
+    return this.request<RiskAlert>(`/riskcast/alerts/${alertId}/acknowledge`, {
+      method: "POST",
+    });
+  }
+
+  async dismissRiskAlert(alertId: string): Promise<RiskAlert> {
+    return this.request<RiskAlert>(`/riskcast/alerts/${alertId}/dismiss`, {
+      method: "POST",
+    });
+  }
+
+  async listRiskRules(crop?: string): Promise<RiskRule[]> {
+    const query = crop ? `?crop=${crop}` : "";
+    return this.request<RiskRule[]>(`/riskcast/rules${query}`);
+  }
+
+  // ================= STAGE 7: EXPERTCONNECT API =================
+
+  async applyForExpert(data: {
+    registration_number?: string;
+    highest_degree: string;
+    institution: string;
+    specializations?: string[];
+    districts_covered?: string[];
+  }): Promise<ExpertProfile> {
+    return this.request<ExpertProfile>("/expertconnect/apply", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getMyExpertProfile(): Promise<ExpertProfile> {
+    return this.request<ExpertProfile>("/expertconnect/profile/me");
+  }
+
+  async listExpertCases(params?: {
+    status?: string;
+    crop_id?: string;
+    priority?: string;
+  }): Promise<ExpertCaseItem[]> {
+    const query = new URLSearchParams(params as any).toString();
+    return this.request<ExpertCaseItem[]>(`/expertconnect/cases${query ? `?${query}` : ""}`);
+  }
+
+  async claimExpertCase(caseId: string): Promise<ExpertCaseItem> {
+    return this.request<ExpertCaseItem>(`/expertconnect/cases/${caseId}/claim`, {
+      method: "POST",
+    });
+  }
+
+  async getExpertCaseDossier(caseId: string): Promise<ExpertCaseDossier> {
+    return this.request<ExpertCaseDossier>(`/expertconnect/cases/${caseId}`);
+  }
+
+  async submitExpertAssessment(
+    caseId: string,
+    data: {
+      confirmed_crop: string;
+      primary_condition: string;
+      differential_diagnoses?: string[];
+      confidence_rating: number;
+      urgency_level: string;
+      management_plan: string;
+      ipm_strategy: string;
+      cibrc_advisories: string;
+    }
+  ): Promise<ExpertAssessment> {
+    return this.request<ExpertAssessment>(`/expertconnect/cases/${caseId}/assess`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async reviseExpertAssessment(
+    caseId: string,
+    data: {
+      confirmed_crop: string;
+      primary_condition: string;
+      differential_diagnoses?: string[];
+      confidence_rating: number;
+      urgency_level: string;
+      management_plan: string;
+      ipm_strategy: string;
+      cibrc_advisories: string;
+      revision_reason: string;
+    }
+  ): Promise<ExpertAssessment> {
+    return this.request<ExpertAssessment>(`/expertconnect/cases/${caseId}/assess`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getExpertAssessmentRevisions(caseId: string): Promise<ExpertAssessmentRevision[]> {
+    return this.request<ExpertAssessmentRevision[]>(`/expertconnect/cases/${caseId}/revisions`);
+  }
+
+  // ================= STAGE 7: INTERVENTIONS API =================
+
+  async createIntervention(data: {
+    plot_id: string;
+    category: "BIOLOGICAL" | "CHEMICAL" | "CULTURAL" | "IRRIGATION" | "FERTILIZER";
+    trade_name: string;
+    active_ingredient?: string;
+    dosage: number;
+    unit?: string;
+    application_method: string;
+    application_date: string;
+    target_condition?: string;
+    phi_days?: number;
+    rei_hours?: number;
+    notes?: string;
+  }): Promise<InterventionRecord> {
+    return this.request<InterventionRecord>("/interventions/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listPlotInterventions(plotId: string): Promise<InterventionRecord[]> {
+    return this.request<InterventionRecord[]>(`/interventions/plots/${plotId}`);
+  }
+
+  async getIntervention(interventionId: string): Promise<InterventionRecord> {
+    return this.request<InterventionRecord>(`/interventions/${interventionId}`);
+  }
+
+  async recordInterventionOutcome(
+    interventionId: string,
+    data: {
+      follow_up_observation_id: string;
+      evaluation_date: string;
+      observed_status: "IMPROVING" | "STABLE" | "WORSENING" | "INCONCLUSIVE";
+      visual_change_notes: string;
+      confounding_factors?: string;
+      farmer_assessment?: string;
+    }
+  ): Promise<OutcomeObservation> {
+    return this.request<OutcomeObservation>(`/interventions/${interventionId}/outcomes`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getInterventionTimeline(interventionId: string): Promise<InterventionTimeline> {
+    return this.request<InterventionTimeline>(`/interventions/${interventionId}/timeline`);
   }
 }
 

@@ -1,5 +1,6 @@
 """
 ACREVIA - API v1 Master Router Assembly.
+Integrates enterprise domains: Auth, Farms, Diagnoses, KrishiBrain RAG, RiskCast, ExpertConnect, and Interventions.
 """
 
 from fastapi import APIRouter
@@ -15,6 +16,9 @@ from backend.app.api.v1.endpoints.weather import router as weather_router
 from backend.app.api.v1.endpoints.consent import router as consent_router
 from backend.app.api.v1.endpoints.system import router as system_router
 from backend.app.api.v1.endpoints.knowledge import router as knowledge_router
+from backend.app.api.v1.endpoints.riskcast import router as riskcast_router
+from backend.app.api.v1.endpoints.expertconnect import router as expertconnect_router
+from backend.app.api.v1.endpoints.interventions import router as interventions_router
 
 api_v1_router = APIRouter()
 
@@ -29,3 +33,6 @@ api_v1_router.include_router(weather_router)
 api_v1_router.include_router(consent_router)
 api_v1_router.include_router(system_router)
 api_v1_router.include_router(knowledge_router)
+api_v1_router.include_router(riskcast_router)
+api_v1_router.include_router(expertconnect_router)
+api_v1_router.include_router(interventions_router)

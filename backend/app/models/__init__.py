@@ -18,6 +18,16 @@ from backend.app.models.knowledge_embedding import KnowledgeEmbedding
 from backend.app.models.ingestion_job import IngestionJob
 from backend.app.models.knowledge_feedback import KnowledgeFeedback
 
+# Stage 7 Models
+from backend.app.models.weather_data import WeatherData
+from backend.app.models.risk_rule import RiskRule
+from backend.app.models.risk_assessment import RiskAssessmentRecord
+from backend.app.models.risk_alert import RiskAlert
+from backend.app.models.expert_profile import ExpertProfile
+from backend.app.models.expert_case import ExpertReviewCase
+from backend.app.models.expert_assessment import ExpertAssessment, ExpertAssessmentRevision
+from backend.app.models.intervention import InterventionRecord, OutcomeObservation
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -52,4 +62,15 @@ __all__ = [
     "KnowledgeEmbedding",
     "IngestionJob",
     "KnowledgeFeedback",
+    # Stage 7 exports
+    "WeatherData",
+    "RiskRule",
+    "RiskAssessmentRecord",
+    "RiskAlert",
+    "ExpertProfile",
+    "ExpertReviewCase",
+    "ExpertAssessment",
+    "ExpertAssessmentRevision",
+    "InterventionRecord",
+    "OutcomeObservation",
 ]

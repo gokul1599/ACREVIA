@@ -23,6 +23,11 @@ class EntityNotFoundException(AcreviaException):
         )
 
 
+class NotFoundException(AcreviaException):
+    def __init__(self, message: str = "Requested resource was not found."):
+        super().__init__(message=message, status_code=404)
+
+
 class AuthorizationException(AcreviaException):
     """Raised when a user attempts cross-farm access or unauthorized resource mutation."""
     def __init__(self, message: str = "Access to requested agricultural resource is forbidden."):
