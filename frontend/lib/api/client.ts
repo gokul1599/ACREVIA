@@ -56,6 +56,18 @@ import type {
   StorageLot,
   EconomicsSummary,
   CropLossEvidencePackage,
+  Community,
+  CommunityPost,
+  CommunityComment,
+  KnowledgeContribution,
+  AgriculturalOrganization,
+  CollectiveActivity,
+  CollectiveAggregateAnalytics,
+  ResearchProject,
+  ResearchConsent,
+  LearningResource,
+  TrainingEvent,
+  RegionalSignal,
 } from "./types.ts";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -973,6 +985,154 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  // ================= Stage 12: Collaborative Agricultural Intelligence =================
+
+  async listCommunities(params?: { category?: string; crop_id?: string }): Promise<Community[]> {
+    const qs = new URLSearchParams();
+    if (params?.category) qs.set("category", params.category);
+    if (params?.crop_id) qs.set("crop_id", params.crop_id);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<Community[]>(`/connect/communities${query}`);
+  }
+
+  async joinCommunity(communityId: string): Promise<{ id: string; community_id: string; user_id: string; role: string }> {
+    return this.request(`/connect/communities/${encodeURIComponent(communityId)}/join`, {
+      method: "POST",
+    });
+  }
+
+  async createCommunityPost(
+    communityId: string,
+    data: {
+      title: string;
+      content: string;
+      post_type?: string;
+      language?: string;
+      crop_id?: string;
+      growth_stage?: string;
+    }
+  ): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/connect/communities/${encodeURIComponent(communityId)}/posts`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listCommunityPosts(
+    communityId: string,
+    params?: { post_type?: string; limit?: number; offset?: number }
+  ): Promise<CommunityPost[]> {
+    const qs = new URLSearchParams();
+    if (params?.post_type) qs.set("post_type", params.post_type);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<CommunityPost[]>(`/connect/communities/${encodeURIComponent(communityId)}/posts${query}`);
+  }
+
+  async addCommunityComment(postId: string, content: string): Promise<CommunityComment> {
+    return this.request<CommunityComment>(`/connect/posts/${encodeURIComponent(postId)}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async votePostHelpful(postId: string): Promise<{ post_id: string; helpful_count: number; message: string }> {
+    return this.request(`/connect/posts/${encodeURIComponent(postId)}/helpful`, {
+      method: "POST",
+    });
+  }
+
+  async submitKnowledgeContribution(data: {
+    contribution_type: string;
+    title: string;
+    description: string;
+    original_language?: string;
+    crop_id?: string;
+    geographic_scope?: string;
+    growth_stage?: string;
+    evidence_references?: string[];
+  }): Promise<KnowledgeContribution> {
+    return this.request<KnowledgeContribution>("/commons/contributions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listKnowledgeContributions(params?: { status?: string; crop_id?: string }): Promise<KnowledgeContribution[]> {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.crop_id) qs.set("crop_id", params.crop_id);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<KnowledgeContribution[]>(`/commons/contributions${query}`);
+  }
+
+  async registerOrganization(data: {
+    name: string;
+    org_type: string;
+    registration_number?: string;
+    state?: string;
+    district: string;
+    description?: string;
+    contact_email?: string;
+    contact_phone?: string;
+  }): Promise<AgriculturalOrganization> {
+    return this.request<AgriculturalOrganization>("/collectives/organizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async listOrganizations(params?: { district?: string; org_type?: string }): Promise<AgriculturalOrganization[]> {
+    const qs = new URLSearchParams();
+    if (params?.district) qs.set("district", params.district);
+    if (params?.org_type) qs.set("org_type", params.org_type);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<AgriculturalOrganization[]>(`/collectives/organizations${query}`);
+  }
+
+  async getCollectiveAnalytics(orgId: string): Promise<CollectiveAggregateAnalytics> {
+    return this.request<CollectiveAggregateAnalytics>(`/collectives/organizations/${encodeURIComponent(orgId)}/analytics`);
+  }
+
+  async listResearchProjects(params?: { status?: string }): Promise<ResearchProject[]> {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<ResearchProject[]>(`/research/projects${query}`);
+  }
+
+  async grantResearchConsent(projectId: string, consentScope: string): Promise<ResearchConsent> {
+    return this.request<ResearchConsent>(`/research/projects/${encodeURIComponent(projectId)}/consent`, {
+      method: "POST",
+      body: JSON.stringify({ consent_scope: consentScope, consent_version: "1.0" }),
+    });
+  }
+
+  async listLearningResources(params?: { crop_id?: string; language?: string; resource_type?: string }): Promise<LearningResource[]> {
+    const qs = new URLSearchParams();
+    if (params?.crop_id) qs.set("crop_id", params.crop_id);
+    if (params?.language) qs.set("language", params.language);
+    if (params?.resource_type) qs.set("resource_type", params.resource_type);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<LearningResource[]>(`/extension/resources${query}`);
+  }
+
+  async registerForTrainingEvent(eventId: string): Promise<{ id: string; event_id: string; user_id: string; attendance_status: string }> {
+    return this.request(`/extension/events/${encodeURIComponent(eventId)}/register`, {
+      method: "POST",
+    });
+  }
+
+  async queryRegionalSignals(params?: { district?: string; crop_id?: string; confidence_tier?: string }): Promise<RegionalSignal[]> {
+    const qs = new URLSearchParams();
+    if (params?.district) qs.set("district", params.district);
+    if (params?.crop_id) qs.set("crop_id", params.crop_id);
+    if (params?.confidence_tier) qs.set("confidence_tier", params.confidence_tier);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<RegionalSignal[]>(`/regional-pulse/signals${query}`);
   }
 }
 

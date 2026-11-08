@@ -1003,3 +1003,176 @@ export interface CropLossEvidencePackage {
   package_hash: string;
   generated_at: string;
 }
+
+// Stage 12: Agricultural Collaboration, Commons, Collectives, Research, Extension & Regional Pulse
+
+export interface Community {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  category: string;
+  crop_id?: string;
+  district?: string;
+  is_moderated: boolean;
+  created_at: string;
+}
+
+export interface CommunityComment {
+  id: string;
+  post_id: string;
+  author_id: string;
+  content: string;
+  is_expert_reply: boolean;
+  is_helpful: boolean;
+  moderation_status: string;
+  created_at: string;
+}
+
+export interface CommunityPost {
+  id: string;
+  community_id: string;
+  author_id: string;
+  post_type: string;
+  title: string;
+  content: string;
+  language: string;
+  crop_id?: string;
+  growth_stage?: string;
+  visibility: string;
+  moderation_status: string;
+  is_expert_reviewed: boolean;
+  helpful_count: number;
+  created_at: string;
+  updated_at: string;
+  comments?: CommunityComment[];
+}
+
+export interface KnowledgeContribution {
+  id: string;
+  contributor_id: string;
+  contribution_type: string;
+  title: string;
+  description: string;
+  original_language: string;
+  crop_id?: string;
+  geographic_scope: string;
+  growth_stage?: string;
+  evidence_references: string[];
+  usage_permission: string;
+  status: string;
+  assigned_expert_id?: string;
+  approved_by_user_id?: string;
+  krishi_brain_ingested: boolean;
+  krishi_brain_doc_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgriculturalOrganization {
+  id: string;
+  name: string;
+  org_type: string;
+  registration_number?: string;
+  state: string;
+  district: string;
+  description?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  verification_status: string;
+  created_at: string;
+}
+
+export interface CollectiveActivity {
+  id: string;
+  organization_id: string;
+  created_by_user_id?: string;
+  activity_type: string;
+  title: string;
+  description: string;
+  target_date: string;
+  status: string;
+  created_at: string;
+}
+
+export interface CollectiveAggregateAnalytics {
+  organization_id: string;
+  total_member_farms: number;
+  aggregated_acreage: number;
+  crop_distribution: Record<string, number>;
+  privacy_cohort_status: string;
+  notes: string;
+}
+
+export interface ResearchProject {
+  id: string;
+  title: string;
+  lead_researcher_id: string;
+  institution_name: string;
+  research_objectives: string;
+  supported_crops: string[];
+  geographic_scope: string;
+  project_status: string;
+  created_at: string;
+}
+
+export interface ResearchConsent {
+  id: string;
+  project_id: string;
+  farmer_id: string;
+  consent_scope: string;
+  is_active: boolean;
+  consent_version: string;
+  granted_at: string;
+  revoked_at?: string;
+}
+
+export interface LearningResource {
+  id: string;
+  title: string;
+  content_body: string;
+  resource_type: string;
+  creator_org_id?: string;
+  creator_user_id: string;
+  crop_id?: string;
+  language: string;
+  review_status: string;
+  view_count: number;
+  created_at: string;
+}
+
+export interface TrainingEvent {
+  id: string;
+  organizer_org_id?: string;
+  title: string;
+  description: string;
+  event_type: string;
+  target_crop_id?: string;
+  district: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  is_online: boolean;
+  meeting_link?: string;
+  max_capacity: number;
+  status: string;
+  created_at: string;
+}
+
+export interface RegionalSignal {
+  id: string;
+  district: string;
+  state: string;
+  crop_id: string;
+  signal_category: string;
+  signal_title: string;
+  signal_summary: string;
+  confidence_tier: string;
+  source_observation_count: number;
+  distinct_farms_count: number;
+  is_outbreak_claim_suppressed: boolean;
+  validation_status: string;
+  recommended_action: string;
+  observed_start_date: string;
+  observed_end_date: string;
+  created_at: string;
+}

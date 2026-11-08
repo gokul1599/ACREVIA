@@ -43,6 +43,14 @@ from backend.app.api.v1.endpoints.quality import router as quality_router
 from backend.app.api.v1.endpoints.trace import router as trace_router
 from backend.app.api.v1.endpoints.economics import router as economics_router
 
+# Stage 12 Routers (Phase III Collaborative Intelligence, Collectives & Regional Pulse)
+from backend.app.api.v1.endpoints.connect import router as connect_router
+from backend.app.api.v1.endpoints.commons import router as commons_router
+from backend.app.api.v1.endpoints.collectives import router as collectives_router
+from backend.app.api.v1.endpoints.research import router as research_router
+from backend.app.api.v1.endpoints.extension import router as extension_router
+from backend.app.api.v1.endpoints.regional_pulse import router as regional_pulse_router
+
 api_v1_router = APIRouter()
 
 api_v1_router.include_router(auth_router)
@@ -82,3 +90,11 @@ api_v1_router.include_router(harvest_router)
 api_v1_router.include_router(quality_router)
 api_v1_router.include_router(trace_router)
 api_v1_router.include_router(economics_router)
+
+# Stage 12 Routes (Collaborative Intelligence, Collectives, Research & Regional Pulse)
+api_v1_router.include_router(connect_router)
+api_v1_router.include_router(commons_router)
+api_v1_router.include_router(collectives_router)
+api_v1_router.include_router(research_router)
+api_v1_router.include_router(extension_router)
+api_v1_router.include_router(regional_pulse_router)

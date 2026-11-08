@@ -52,6 +52,14 @@ from backend.app.models.post_harvest import ProduceQualityProfile, QualityMeasur
 from backend.app.models.crop_economics import CropSeasonEconomics
 from backend.app.models.evidence_package import CropLossEvidencePackage
 
+# Stage 12 Models (Collaborative Agricultural Intelligence & Community Governance)
+from backend.app.models.community import Community, CommunityMembership, CommunityPost, CommunityComment, CommunityReport
+from backend.app.models.commons_contribution import KnowledgeContribution, ContributionReview, TranslationVersion
+from backend.app.models.collective import AgriculturalOrganization, OrganizationMembership, CollectiveActivity
+from backend.app.models.research_hub import ResearchProject, ResearchConsent, DatasetContribution, AnnotationTask, AnnotationRecord
+from backend.app.models.extension_learning import LearningResource, TrainingEvent, EventRegistration, LearningFeedback
+from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+
 __all__ = [
     "Base",
     "TimestampMixin",
@@ -142,4 +150,27 @@ __all__ = [
     "StorageLot",
     "CropSeasonEconomics",
     "CropLossEvidencePackage",
+    # Stage 12 exports
+    "Community",
+    "CommunityMembership",
+    "CommunityPost",
+    "CommunityComment",
+    "CommunityReport",
+    "KnowledgeContribution",
+    "ContributionReview",
+    "TranslationVersion",
+    "AgriculturalOrganization",
+    "OrganizationMembership",
+    "CollectiveActivity",
+    "ResearchProject",
+    "ResearchConsent",
+    "DatasetContribution",
+    "AnnotationTask",
+    "AnnotationRecord",
+    "LearningResource",
+    "TrainingEvent",
+    "EventRegistration",
+    "LearningFeedback",
+    "RegionalSignal",
+    "RegionalSignalEvidence",
 ]
