@@ -137,6 +137,64 @@ class KnowledgeGenerator:
         )
 
     @classmethod
+    async def generate_response_async(
+        cls,
+        req: KnowledgeQueryRequest,
+        chunks: List[ScoredChunk],
+        start_time: float,
+        use_groq: bool = True
+    ) -> KnowledgeQueryResponse:
+        """
+        Asynchronously synthesizes grounded responses.
+        If GroqCloud is configured and available, generates conversational multilingual guidance
+        strictly bounded by retrieved source evidence, with seamless fallback on rate limits or timeout.
+        """
+        base_resp = cls.generate_response(req, chunks, start_time)
+
+        # Only enhance if base response was successful and not an abstention
+        if not use_groq or base_resp.answer_status not in ["ANSWERED", "PARTIALLY_ANSWERED"]:
+            return base_resp
+
+        from backend.app.integrations.groq_client import groq_client
+        if not groq_client.is_configured:
+            return base_resp
+
+        primary_chunk = chunks[0].chunk
+        doc_title = chunks[0].document_title
+        publisher = chunks[0].publisher
+
+        system_prompt = (
+            "You are KrishiBrain, an agricultural AI assistant for farmers in Telangana, India. "
+            "You must synthesize an accurate, concise answer based ONLY on the verified evidence below. "
+            "Do NOT invent unverified recommendations. Do NOT recommend banned or off-label pesticides. "
+            f"Respond in language code: {req.language}."
+        )
+        user_content = (
+            f"Farmer Question: {req.question}\n\n"
+            f"Verified Evidence from {publisher} ({doc_title}):\n{primary_chunk.content}"
+        )
+
+        groq_res = await groq_client.generate_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.2,
+            max_tokens=350
+        )
+
+        if groq_res.get("success") and groq_res.get("content"):
+            enhanced_answer = (
+                f"{groq_res['content'].strip()}\n\n"
+                f"---\n"
+                f"Source: {publisher} — {doc_title}\n"
+                f"Note: Adhere strictly to CIBRC label directions for any chemical application."
+            )
+            base_resp.answer = enhanced_answer
+
+        return base_resp
+
+    @classmethod
     def _build_abstention_response(
         cls,
         req: KnowledgeQueryRequest,

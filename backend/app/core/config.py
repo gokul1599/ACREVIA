@@ -80,6 +80,28 @@ class Settings(BaseModel):
     RATE_LIMIT_FAIL_MODE: str = Field(default_factory=lambda: os.getenv("RATE_LIMIT_FAIL_MODE", "fail_open"))  # "fail_open" or "fail_closed"
     RATE_LIMIT_NAMESPACE: str = Field(default_factory=lambda: os.getenv("RATE_LIMIT_NAMESPACE", "acrevia"))
 
+    # Free External Services Integration Suite
+    # 1. GroqCloud (Free AI Inference)
+    GROQ_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("GROQ_API_KEY", None))
+    GROQ_MODEL: str = Field(default_factory=lambda: os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"))
+    GROQ_TIMEOUT_SECONDS: float = 12.0
+
+    # 4. Copernicus Data Space Ecosystem (Sentinel-2 Satellite Imagery)
+    COPERNICUS_CLIENT_ID: Optional[str] = Field(default_factory=lambda: os.getenv("COPERNICUS_CLIENT_ID", None))
+    COPERNICUS_CLIENT_SECRET: Optional[str] = Field(default_factory=lambda: os.getenv("COPERNICUS_CLIENT_SECRET", None))
+    COPERNICUS_BASE_URL: str = Field(default_factory=lambda: os.getenv("COPERNICUS_BASE_URL", "https://catalogue.dataspace.copernicus.eu/odata/v1"))
+
+    # 5. Hugging Face (Optional Hub & Model Metadata)
+    HF_TOKEN: Optional[str] = Field(default_factory=lambda: os.getenv("HF_TOKEN", None))
+
+    # 6. Open-Meteo (Agrometeorological Forecast & Historical API - Free Public)
+    OPEN_METEO_API_URL: str = Field(default_factory=lambda: os.getenv("OPEN_METEO_API_URL", "https://api.open-meteo.com/v1/forecast"))
+
+    # 7. data.gov.in (Indian Government Open Agricultural Datasets - Agmarknet Mandis)
+    DATA_GOV_IN_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("DATA_GOV_IN_API_KEY", None))
+    DATA_GOV_IN_RESOURCE_ID: str = Field(default_factory=lambda: os.getenv("DATA_GOV_IN_RESOURCE_ID", "9ef84268-d588-465a-a308-a864a43d0070"))
+    DATA_GOV_IN_TIMEOUT_SECONDS: float = 10.0
+
     # Agricultural Scope
     TARGET_GEOGRAPHY: str = "Telangana, India"
     SUPPORTED_CROPS: List[str] = ["cotton", "rice", "chilli"]

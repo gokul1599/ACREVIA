@@ -192,3 +192,18 @@ class SatelliteService:
         ).order_by(SatelliteObservation.observation_date.desc()).limit(1)
 
         return db.execute(stmt).scalar_one_or_none()
+
+    @classmethod
+    async def query_copernicus_scenes(
+        cls,
+        max_cloud_cover_percent: float = 20.0,
+        days_back: int = 15,
+        limit: int = 5
+    ) -> Dict[str, Any]:
+        """Queries Copernicus CDSE Sentinel-2 catalogue for recent clear-sky acquisitions."""
+        from backend.app.integrations.copernicus_client import copernicus_client
+        return await copernicus_client.search_sentinel2_scenes(
+            max_cloud_cover_percent=max_cloud_cover_percent,
+            days_back=days_back,
+            limit=limit
+        )

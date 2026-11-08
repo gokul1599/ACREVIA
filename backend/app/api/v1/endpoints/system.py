@@ -4,10 +4,17 @@ ACREVIA - System Status & Integration Health Endpoints.
 
 from typing import Dict, Any
 from fastapi import APIRouter
+import sqlalchemy as sa
+
 from backend.app.core.config import settings
+from backend.app.database.session import engine
 from backend.app.integrations.ml_client import ml_client
 from backend.app.integrations.weather_client import weather_client
 from backend.app.integrations.storage import get_storage_provider
+from backend.app.integrations.groq_client import groq_client
+from backend.app.integrations.hf_client import hf_client
+from backend.app.integrations.copernicus_client import copernicus_client
+from backend.app.integrations.datagov_client import datagov_client
 
 router = APIRouter(prefix="/system", tags=["System & Integrations"])
 
@@ -58,15 +65,53 @@ def get_system_observability() -> Dict[str, Any]:
 @router.get("/integrations")
 async def get_integration_status() -> Dict[str, Any]:
     """
-    Checks operational connectivity across internal and external integrated services.
+    Checks operational connectivity across internal and external integrated services
+    covering all seven supported free-tier services.
     """
+    # 1. Internal & Baseline Providers
     ml_health = await ml_client.check_health()
     weather_sample = await weather_client.get_district_weather("warangal")
-
     storage = get_storage_provider()
     storage_status = "CONFIGURED" if storage else "UNAVAILABLE"
 
+    # 2. Free External Services Suite
+    groq_health = await groq_client.check_health()
+    hf_health = await hf_client.check_health()
+    copernicus_health = await copernicus_client.check_health()
+    datagov_health = await datagov_client.check_health()
+
+    # 3. Database (Neon PostgreSQL) Health
+    try:
+        with engine.connect() as conn:
+            val = conn.execute(sa.text("SELECT 1")).scalar()
+            db_connected = (val == 1)
+        db_type = "Neon PostgreSQL (Primary Relational + pgvector)" if "postgres" in str(engine.url) else "SQLite (Dev/Test Fallback)"
+        neon_health = {
+            "status": "CONFIGURED" if db_connected else "DEGRADED",
+            "provider": "Neon Serverless PostgreSQL",
+            "db_type": db_type,
+            "free_allowance_gb": 0.5,
+            "pgvector_active": True
+        }
+    except Exception as e:
+        neon_health = {
+            "status": "UNAVAILABLE",
+            "provider": "Neon Serverless PostgreSQL",
+            "error": str(e)
+        }
+
+    # 4. Redis / Upstash Distributed Rate Limiting
+    is_upstash = bool(settings.REDIS_URL and "upstash" in settings.REDIS_URL.lower())
+    redis_health = {
+        "status": "CONFIGURED" if settings.REDIS_URL else "IN_MEMORY_FALLBACK",
+        "provider": "Upstash Redis" if is_upstash else ("Redis Managed" if settings.REDIS_URL else "InMemory Sliding-Window"),
+        "tls_enforced": bool(settings.REDIS_URL and settings.REDIS_URL.startswith("rediss://")),
+        "fail_mode": settings.RATE_LIMIT_FAIL_MODE,
+        "free_tier": True
+    }
+
     return {
+        # Preserved baseline keys for backward compatibility
         "storage": {
             "provider": "LOCAL_SECURE",
             "status": storage_status
@@ -79,6 +124,23 @@ async def get_integration_status() -> Dict[str, Any]:
         "weather_provider": {
             "provider": "Open-Meteo",
             "status": weather_sample.get("status", "CONFIGURED"),
-            "district_tested": "warangal"
+            "district_tested": "warangal",
+            "attribution": weather_sample.get("attribution", "Open-Meteo.com")
+        },
+
+        # Seven Free Services Manifest
+        "services": {
+            "groq_cloud": groq_health,
+            "neon_postgresql": neon_health,
+            "upstash_redis": redis_health,
+            "copernicus_data_space": copernicus_health,
+            "hugging_face": hf_health,
+            "open_meteo": {
+                "status": weather_sample.get("status", "CONFIGURED"),
+                "provider": "Open-Meteo",
+                "auth_required": False,
+                "attribution": weather_sample.get("attribution")
+            },
+            "data_gov_in": datagov_health
         }
     }

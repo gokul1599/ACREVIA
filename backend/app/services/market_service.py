@@ -6,7 +6,7 @@ Pillar B: Ingestion normalization, Agmarknet/e-NAM adapters, and comparative net
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -256,3 +256,13 @@ class MarketService:
             plot_id=plot_id,
             comparisons=comparisons,
         )
+
+    @classmethod
+    async def sync_datagov_prices(
+        cls,
+        commodity: Optional[str] = None,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """Ingests live official Agmarknet mandi arrivals and modal prices from data.gov.in."""
+        from backend.app.integrations.datagov_client import datagov_client
+        return await datagov_client.fetch_telangana_mandi_prices(commodity=commodity, limit=limit)
