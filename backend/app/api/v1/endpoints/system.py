@@ -15,6 +15,7 @@ from backend.app.integrations.groq_client import groq_client
 from backend.app.integrations.hf_client import hf_client
 from backend.app.integrations.copernicus_client import copernicus_client
 from backend.app.integrations.datagov_client import datagov_client
+from backend.app.integrations.satellite_client import satellite_client
 
 router = APIRouter(prefix="/system", tags=["System & Integrations"])
 
@@ -77,6 +78,7 @@ async def get_integration_status() -> Dict[str, Any]:
     # 2. Free External Services Suite
     groq_health = await groq_client.check_health()
     hf_health = await hf_client.check_health()
+    satellite_health = await satellite_client.check_health()
     copernicus_health = await copernicus_client.check_health()
     datagov_health = await datagov_client.check_health()
 
@@ -150,7 +152,12 @@ async def get_integration_status() -> Dict[str, Any]:
             "groq_cloud": groq_health,
             "neon_postgresql": neon_health,
             "upstash_redis": redis_health,
-            "copernicus_data_space": copernicus_health,
+            "earth_search_satellite": satellite_health,
+            "copernicus_data_space": {
+                **copernicus_health,
+                "migrated_to": "Element 84 Earth Search STAC API",
+                "auth_required": False
+            },
             "hugging_face": hf_health,
             "open_meteo": {
                 "status": weather_sample.get("status", "CONFIGURED"),

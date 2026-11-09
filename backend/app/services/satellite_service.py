@@ -194,16 +194,70 @@ class SatelliteService:
         return db.execute(stmt).scalar_one_or_none()
 
     @classmethod
+    async def search_satellite_scenes(
+        cls,
+        bbox: Optional[List[float]] = None,
+        geometry: Optional[Dict[str, Any]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_cloud_cover_percent: float = 20.0,
+        limit: int = 5,
+    ) -> Dict[str, Any]:
+        """
+        Searches Sentinel-2 L2A scenes via provider-independent STAC architecture
+        (Primary: Element 84 Earth Search; Fallback: Microsoft Planetary Computer).
+        """
+        try:
+            from backend.app.integrations.satellite_client import satellite_client
+        except ImportError:
+            from app.integrations.satellite_client import satellite_client
+
+        return await satellite_client.search_scenes(
+            bbox=bbox,
+            geometry=geometry,
+            start_date=start_date,
+            end_date=end_date,
+            max_cloud_cover_percent=max_cloud_cover_percent,
+            limit=limit,
+        )
+
+    @classmethod
     async def query_copernicus_scenes(
         cls,
         max_cloud_cover_percent: float = 20.0,
         days_back: int = 15,
         limit: int = 5
     ) -> Dict[str, Any]:
-        """Queries Copernicus CDSE Sentinel-2 catalogue for recent clear-sky acquisitions."""
-        from backend.app.integrations.copernicus_client import copernicus_client
-        return await copernicus_client.search_sentinel2_scenes(
+        """
+        Maintains backward compatibility while routing to authentication-free Earth Search STAC API.
+        """
+        now = datetime.now(timezone.utc)
+        start_date = now - timedelta(days=days_back)
+        res = await cls.search_satellite_scenes(
+            start_date=start_date,
+            end_date=now,
             max_cloud_cover_percent=max_cloud_cover_percent,
-            days_back=days_back,
             limit=limit
         )
+        if res.get("success"):
+            # Normalize to legacy shape expected by any existing caller
+            legacy_scenes = []
+            for sc in res.get("scenes", []):
+                legacy_scenes.append({
+                    "product_id": sc.get("id"),
+                    "name": sc.get("id"),
+                    "acquisition_date": sc.get("acquisition_date"),
+                    "content_length_bytes": None,
+                    "origin_constellation": "Sentinel-2 L2A",
+                    "cloud_filtered": True,
+                    "provider": sc.get("provider"),
+                    "assets": sc.get("assets", {})
+                })
+            return {
+                "success": True,
+                "scenes_count": len(legacy_scenes),
+                "scenes": legacy_scenes,
+                "attribution": res.get("attribution"),
+                "disclaimer": res.get("disclaimer"),
+            }
+        return res

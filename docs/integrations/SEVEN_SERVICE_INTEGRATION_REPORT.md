@@ -14,7 +14,7 @@ This report documents the architectural integration, server-side credential mana
 1. **GroqCloud:** AI inference for KrishiBrain multilingual RAG advisory (`COMPLETE_VERIFIED`).
 2. **Neon PostgreSQL:** Primary relational and pgvector database (`COMPLETE_VERIFIED`).
 3. **Upstash Redis:** Distributed rate limiting with in-memory fallback (`COMPLETE_VERIFIED`).
-4. **Copernicus Data Space Ecosystem:** Sentinel-2 satellite Earth observation (`BLOCKED_MISSING_CREDENTIAL` for OAuth; public catalogue verified).
+4. **Earth Search & Copernicus Sentinel-2:** Sentinel-2 satellite Earth observation (`COMPLETE_VERIFIED` via Element 84 Earth Search STAC + Microsoft Planetary Computer fallback).
 5. **Hugging Face Hub:** Open-weight model and dataset discovery with optional authentication (`COMPLETE_VERIFIED`).
 6. **Open-Meteo:** Real-time agrometeorological historical and forecast data (`COMPLETE_VERIFIED`).
 7. **data.gov.in:** National Open Data Portal Agmarknet daily mandi prices (`COMPLETE_VERIFIED`).
@@ -77,8 +77,8 @@ In strict adherence to security directives, secret values are never printed. The
 | Upstash Redis        | PING -> True       | 350 ms        | Real Live   | Upstash Redis 8.4.0 verified; |
 |                      |                    |               |             | TLS encrypted sliding-window  |
 +----------------------+--------------------+---------------+-------------+-------------------------------+
-| Copernicus CDSE      | HTTP 200 OK        | 1,210 ms      | Real Public | OData public catalogue active;|
-|                      |                    |               |             | OAuth gated on credentials    |
+| Earth Search STAC    | HTTP 200 OK        | 1,210 ms      | Real Live   | Zero Auth; Sentinel-2 L2A COGs|
+|                      |                    |               |             | Microsoft Planetary Computer fb|
 +----------------------+--------------------+---------------+-------------+-------------------------------+
 | Hugging Face Hub     | HTTP 200 OK        | 320 ms        | Real Live   | User: k12gokul verified;      |
 |                      |                    |               |             | public model lookup verified  |

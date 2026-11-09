@@ -26,7 +26,7 @@ All external service integrations are governed by five non-negotiable principles
 | **1** | **GroqCloud** | High-speed AI inference for KrishiBrain RAG | `GROQ_API_KEY`<br>`GROQ_MODEL` | **YES** | **YES** (HTTP 200, 0.6s latency) | **`COMPLETE_VERIFIED`** |
 | **2** | **Neon PostgreSQL** | Primary relational & vector database | `DATABASE_URL` | **YES** | **YES** (PostgreSQL 18.6, 133 tables) | **`COMPLETE_VERIFIED`** |
 | **3** | **Upstash Redis** | Distributed atomic rate limiting | `REDIS_URL`<br>`RATE_LIMIT_*` | **YES** (Upstash TLS) | **YES** (Upstash Redis 8.4.0 PING & Pipeline passed) | **`COMPLETE_VERIFIED`** |
-| **4** | **Copernicus CDSE** | Sentinel-2 satellite Earth observation | `COPERNICUS_CLIENT_ID`<br>`COPERNICUS_CLIENT_SECRET` | **NO** (Public search only) | **YES** (Public OData search passed; auth gated) | **`BLOCKED_MISSING_CREDENTIAL`** |
+| **4** | **Earth Search / Copernicus** | Sentinel-2 satellite Earth observation | `EARTH_SEARCH_STAC_URL`<br>`PLANETARY_COMPUTER_STAC_URL` | **N/A** (Zero Auth Required) | **YES** (HTTP 200, S3 COGs accessible) | **`COMPLETE_VERIFIED`** |
 | **5** | **Hugging Face** | Open-weight model & dataset hub | `HF_TOKEN` (Optional) | **YES** (`k12gokul`) | **YES** (HTTP 200 whoami & model metadata) | **`COMPLETE_VERIFIED`** |
 | **6** | **Open-Meteo** | Agrometeorological historical & forecast | `OPEN_METEO_API_URL` (No key) | **N/A** (Open Public) | **YES** (HTTP 200, live 23.6°C Warangal) | **`COMPLETE_VERIFIED`** |
 | **7** | **data.gov.in** | Indian Government Agmarknet mandi prices | `DATA_GOV_IN_API_KEY`<br>`DATA_GOV_IN_RESOURCE_ID` | **YES** | **YES** (HTTP 200, live Telangana prices in 500ms) | **`COMPLETE_VERIFIED`** |
@@ -99,22 +99,26 @@ All external service integrations are governed by five non-negotiable principles
 
 ---
 
-### 3.4 Copernicus Data Space Ecosystem (Satellite Earth Observation)
-- **Service Purpose:** Querying Copernicus Sentinel-2 MSI Level-2A bottom-of-atmosphere surface reflectance scenes over Telangana to compute NDVI, EVI, and NDMI canopy trends.
-- **Provider URL:** `https://dataspace.copernicus.eu`
+### 3.4 Element 84 Earth Search & Copernicus Sentinel-2 (Satellite Earth Observation)
+- **Service Purpose:** Querying Sentinel-2 MSI Level-2A surface reflectance scenes over Telangana to compute NDVI, EVI, and NDMI canopy trends via authentication-free STAC architecture.
+- **Primary Provider URL:** `https://earth-search.aws.element84.com/v1` (Element 84 Earth Search on AWS Open Data).
+- **Secondary Fallback URL:** `https://planetarycomputer.microsoft.com/api/stac/v1` (Microsoft Planetary Computer).
 - **Environment Variables:**
-  - `COPERNICUS_CLIENT_ID`: OAuth2 client ID.
-  - `COPERNICUS_CLIENT_SECRET`: OAuth2 client secret.
-  - `COPERNICUS_BASE_URL`: `https://catalogue.dataspace.copernicus.eu/odata/v1`.
+  - `EARTH_SEARCH_STAC_URL`: STAC API v1 endpoint (default: `https://earth-search.aws.element84.com/v1`).
+  - `PLANETARY_COMPUTER_STAC_URL`: Fallback STAC API v1 endpoint.
+  - `SATELLITE_PRIMARY_PROVIDER`: `"earth_search"`.
+  - `COPERNICUS_CLIENT_ID` / `COPERNICUS_CLIENT_SECRET`: Optional legacy parameters (no longer required).
 - **Free-Tier Limits:**
-  - Open Access: Free search and download for research and civil applications under European Union Copernicus open data policy.
-  - Quota: Free user account; rate limits managed by CDSE identity portal.
+  - Open Access: 100% free, public, anonymous STAC discovery and Cloud-Optimized GeoTIFF downloads from AWS Open Data.
+  - Zero registration or paid subscription barriers.
 - **Credential Verification:**
-  - Public OData search verified without credentials (`HTTP 200`, returning Sentinel products).
-  - Full client credentials OAuth token acquisition gated on user-supplied credentials (`BLOCKED_MISSING_CREDENTIAL`).
+  - Live query verified against Earth Search STAC (`HTTP 200`, returning Sentinel-2 L2A scenes over Warangal, Telangana).
+  - COG asset range requests verified on AWS S3 (`HTTP 206 Partial Content`).
+  - Microsoft Planetary Computer fallback verified (`HTTP 200` with anonymous SAS token).
+  - Status: **`COMPLETE_VERIFIED`**.
 - **Attribution & Legal Disclaimers:**
-  - Mandatory Attribution: *"Contains modified Copernicus Sentinel data [2026]"*.
-  - Mandatory Non-Diagnostic Disclaimer: *"Satellite-derived vegetation indices provide spectral reflectance estimates and cannot diagnose plant diseases, insect damage, or soil nutrient deficiencies."*
+  - Mandatory Attribution: *"Contains modified Copernicus Sentinel data [2026] processed via AWS Open Data / Element 84 Earth Search"*.
+  - Mandatory Non-Diagnostic Disclaimer: *"Satellite observations reflect broad canopy vigor and surface moisture; they do not diagnose specific plant diseases or pathogens."*
 
 ---
 

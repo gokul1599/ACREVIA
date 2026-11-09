@@ -86,7 +86,12 @@ class Settings(BaseModel):
     GROQ_MODEL: str = Field(default_factory=lambda: os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b"))
     GROQ_TIMEOUT_SECONDS: float = 12.0
 
-    # 4. Copernicus Data Space Ecosystem (Sentinel-2 Satellite Imagery)
+    # 4. Satellite Earth Observation (Free STAC Architecture: Earth Search + Planetary Computer)
+    EARTH_SEARCH_STAC_URL: str = Field(default_factory=lambda: os.getenv("EARTH_SEARCH_STAC_URL", "https://earth-search.aws.element84.com/v1"))
+    PLANETARY_COMPUTER_STAC_URL: str = Field(default_factory=lambda: os.getenv("PLANETARY_COMPUTER_STAC_URL", "https://planetarycomputer.microsoft.com/api/stac/v1"))
+    SATELLITE_PRIMARY_PROVIDER: str = Field(default_factory=lambda: os.getenv("SATELLITE_PRIMARY_PROVIDER", "earth_search"))
+
+    # Legacy Copernicus CDSE (Optional, Non-Blocking)
     COPERNICUS_CLIENT_ID: Optional[str] = Field(default_factory=lambda: os.getenv("COPERNICUS_CLIENT_ID", None))
     COPERNICUS_CLIENT_SECRET: Optional[str] = Field(default_factory=lambda: os.getenv("COPERNICUS_CLIENT_SECRET", None))
     COPERNICUS_BASE_URL: str = Field(default_factory=lambda: os.getenv("COPERNICUS_BASE_URL", "https://catalogue.dataspace.copernicus.eu/odata/v1"))

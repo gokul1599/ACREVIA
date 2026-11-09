@@ -107,11 +107,13 @@ class CopernicusClient:
                         "status": "CONFIGURED",
                         "provider": "Copernicus Data Space Ecosystem",
                         "constellation": "Sentinel-2 MSI",
-                        "auth_mode": "AUTHENTICATED" if self.is_configured else "PUBLIC_CATALOGUE",
+                        "auth_mode": "AUTHENTICATED" if self.is_configured else "PUBLIC_CATALOGUE_MIGRATED",
                         "has_credentials": self.is_configured,
                         "latency_ms": latency_ms,
                         "attribution": COPERNICUS_ATTRIBUTION,
-                        "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER
+                        "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
+                        "migration_target": "Element 84 Earth Search STAC API",
+                        "auth_required": False
                     }
                 else:
                     return {
@@ -136,6 +138,35 @@ class CopernicusClient:
         Searches recent Sentinel-2 MSI Level-2A surface reflectance products over Telangana.
         Applies cloud masking threshold and returns normalized scene metadata.
         """
+        if not self.is_configured:
+            # Fall back directly to authentication-free Earth Search STAC API
+            try:
+                from backend.app.integrations.satellite_client import satellite_client
+            except ImportError:
+                from app.integrations.satellite_client import satellite_client
+            stac_res = await satellite_client.search_scenes(
+                max_cloud_cover_percent=max_cloud_cover_percent,
+                limit=limit
+            )
+            if stac_res.get("success"):
+                legacy_scenes = []
+                for s in stac_res.get("scenes", []):
+                    legacy_scenes.append({
+                        "product_id": s.get("id"),
+                        "name": s.get("id"),
+                        "acquisition_date": s.get("acquisition_date"),
+                        "content_length_bytes": None,
+                        "origin_constellation": "Sentinel-2",
+                        "cloud_filtered": True
+                    })
+                return {
+                    "success": True,
+                    "scenes_count": len(legacy_scenes),
+                    "scenes": legacy_scenes,
+                    "attribution": COPERNICUS_ATTRIBUTION,
+                    "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER
+                }
+
         now = datetime.now(timezone.utc)
         start_date = (now - timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00.000Z")
 
