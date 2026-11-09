@@ -3,7 +3,7 @@
 
 **Programme:** ACREVIA — Agricultural Intelligence Platform  
 **Document Code:** `PHASE_02_INSTITUTIONAL_OUTREACH_AUTHORIZATION_REGISTER.md`  
-**Audited Baseline Commit:** `62c008f`  
+**Audited Baseline Commit:** `41b36f3`  
 **Target Geography:** Telangana, India  
 **Target Institutions:**
 1. Krishi Vigyan Kendra (KVK), Malyal — Mahabubabad District
@@ -51,7 +51,7 @@ The independent technical, security, legal, and institutional audit evaluated th
 
 | Dimension ID | Operational Readiness Dimension | Audit Status | Key Evidence / Verification Basis | Remaining Dependencies / Limits |
 |---|---|---|---|---|
-| **R01** | Repository Integrity & Lineage | `COMPLETE_VERIFIED` | HEAD `62c008f` on `main`; clean working tree; commit lineage unbroken | None |
+| **R01** | Repository Integrity & Lineage | `COMPLETE_VERIFIED` | HEAD `41b36f3` on `main`; clean working tree; commit lineage unbroken | None |
 | **R02** | Automated Test Verification | `COMPLETE_VERIFIED` | 252 physical tests collected and passing (145 backend + 55 ML + 9 vision + 43 frontend); 0 TS errors | None |
 | **R03** | Staging Cloud Architecture | `OPEN — LIVE_DEPLOYMENT_PENDING` | `frontend/vercel.json` (`sin1`), `.env.staging.example` verified; live deploy pending sign-off | Owner authorization for live preview deploy (A08) |
 | **R04** | Neon DB Staging & Tenant Isolation | `DOCUMENTED_RESIDUAL_LIMITATION` | Application-layer tenant isolation verified (HTTP 403 on cross-tenant read); DB-level RLS deferred | Documented limitation (D2) |

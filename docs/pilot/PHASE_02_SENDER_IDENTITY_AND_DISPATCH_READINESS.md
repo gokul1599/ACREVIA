@@ -4,7 +4,7 @@
 **Programme:** ACREVIA — Agricultural Intelligence Platform  
 **Target Geography:** Telangana, India  
 **Document Code:** `PHASE_02_SENDER_IDENTITY_AND_DISPATCH_READINESS.md`  
-**Audited Baseline Commit:** `62c008f`  
+**Audited Baseline Commit:** `41b36f3`  
 **Date of Document Issuance:** November 9, 2026  
 **Sender Identity Status:** **`PENDING_OWNER_INPUT`**  
 **Dispatch Gating Status:** **`HOLD — AWAITING OWNER INPUT & SIGN-OFF`**  

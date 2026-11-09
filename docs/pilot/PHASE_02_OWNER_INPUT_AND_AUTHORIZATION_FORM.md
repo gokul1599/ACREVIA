@@ -4,7 +4,7 @@
 **Programme:** ACREVIA — Agricultural Intelligence Platform  
 **Target Geography:** Telangana, India  
 **Document Code:** `PHASE_02_OWNER_INPUT_AND_AUTHORIZATION_FORM.md`  
-**Audited Baseline Commit:** `62c008f`  
+**Audited Baseline Commit:** `41b36f3`  
 **Date of Document Issuance:** November 9, 2026  
 **Operational Status:** **`AWAITING_OWNER_INPUT_AND_SIGN_OFF`**  
 **Outreach Authorization Status:** **`GO_FOR_OUTREACH_PENDING_OWNER_APPROVAL`**  
@@ -39,6 +39,12 @@ Please provide your verified professional identity details. These credentials wi
 | Postal / Office Address            | [OPTIONAL OWNER INPUT]                                                            |
 +------------------------------------+-----------------------------------------------------------------------------------+
 ```
+
+### Essential Sender Identity Requirements:
+1. **Monitored Mailbox:** The supplied email address must be actively monitored by the project lead to ensure timely receipt of institutional correspondence and university queries.
+2. **Authorized Representation:** The sender must have legitimate authority to represent the ACREVIA research and engineering initiative.
+3. **Genuine Professional Title:** Professional titles and institutional affiliations must be accurate.
+4. **No Unsupported Affiliations:** The sender must NOT claim or imply formal affiliation with Professor Jayashankar Telangana State Agricultural University (PJTSAU), the Indian Council of Agricultural Research (ICAR), or the Government of Telangana unless such an appointment officially exists.
 
 *Note: In strict compliance with privacy and governance directives, the engineering team has NOT inferred or extracted personal details from local operating system, Git, or browser configurations.*
 
@@ -199,7 +205,7 @@ The following activities remain **STRICTLY PROHIBITED** by architecture, law, an
 Please review the following declaration, execute your attributable decision, and date this form:
 
 > **PROJECT OWNER DECLARATION:**  
-> *"I confirm that the decisions selected in this form represent my explicit instructions for the corresponding institutional communications and operational actions for ACREVIA Phase 02. Approval is limited strictly to each independently marked scope. No unselected action is authorized. This approval does not authorize farmer recruitment, personal data collection, or on-farm agricultural interventions."*
+> *"I confirm that the decisions selected in this form represent my explicit instructions for the individual actions described. Approval applies only to the selected scope and does not authorize unselected actions. No farmer recruitment, personal-data collection or field activity is authorized by preliminary institutional correspondence."*
 
 ```
 +========================================================================================================================+
@@ -216,10 +222,14 @@ Please review the following declaration, execute your attributable decision, and
 
 ---
 
-## 6. Pre-Dispatch Verification Checklist Notice
+## 6. Step-by-Step Completion Instructions for the Project Owner
 
-Once this form is executed by the project owner:
-1. The authorized sender identity will be populated into the corresponding email templates in `KVK_OUTREACH_EMAIL_DRAFTS.md`.
-2. The internal warning banner `> [!CAUTION] INTERNAL DRAFT — DO NOT SEND WITHOUT OWNER APPROVAL` will be removed during email composition in the client.
-3. Outbound emails will be transmitted strictly via authenticated SMTP with delivery receipt logging.
-4. Transmission will be recorded in `PHASE_02_INSTITUTIONAL_DISPATCH_READINESS_REGISTER.md`.
+To complete the institutional outreach release gate properly:
+
+1. **Enter Genuine Sender Information:** Fill in your real legal name, title, project affiliation, and monitored email address in Section 1.
+2. **Select Individual Decisions:** Mark your choice (`[X] APPROVE`, `[X] HOLD`, or `[X] REJECT`) for each independent gate (A01 through A09) in Sections 2 and 3.
+3. **Review Exact Correspondence:** Review the corresponding bilingual email drafts in [KVK_OUTREACH_EMAIL_DRAFTS.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/kvk/KVK_OUTREACH_EMAIL_DRAFTS.md) before authorizing any transmission.
+4. **Approve Intended Scope Only:** Confirm that your selection is restricted strictly to the described institutional inquiry and does not approve unselected actions.
+5. **Sign and Date the Declaration:** Complete the formal declaration in Section 5 with your attributable signature and date.
+6. **Preserve a Permanent Record:** Retain a completed copy in project records.
+7. **Return for Validation:** Provide the completed form to the technical programme manager to trigger pre-dispatch validation.
