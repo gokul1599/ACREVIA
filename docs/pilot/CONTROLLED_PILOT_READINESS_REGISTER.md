@@ -4,7 +4,7 @@
 **Programme:** ACREVIA Controlled Field Pilot Phase 01  
 **Target Geographies:** Mahabubabad District (KVK Malyal) & Nalgonda District (KVK Kampasagar), Telangana  
 **Evaluation Scope:** Infrastructure, Application, Zero-Cost Compliance, Multilingual/A11y, Scientific Integrity, Data Privacy, Institutional Readiness, and Operational Safeguards  
-**Baseline Test Execution:** 240 Total Passing Tests (145 Backend Tests + 9 Staging Acceptance Tests + 6 ML Dataset Tests + 43 Frontend Tests + 37 Specialized Tests)  
+**Baseline Test Execution:** 252 Total Passing Tests (145 Backend Tests including 9 Staging Acceptance Tests + 55 ML Tests + 9 Vision API Tests + 43 Frontend Tests)  
 **Report Date:** November 9, 2026  
 **Overall Readiness Gate Recommendation:** **GO FOR INSTITUTIONAL OUTREACH** *(Staging environment operational; field trial pending KVK formal agreement)*  
 
@@ -47,11 +47,11 @@ A rigorous, evidence-based review was performed across eight primary operational
 - **Status:** **`COMPLETE_VERIFIED`**
 
 ### 3.2 DIM-02: Application Code & Test Verification
-- **Backend Test Suite:** 145 backend tests in `backend/tests/` passed, including the 9 dedicated staging acceptance tests (`test_staging_acceptance.py`) executed in 26.65 seconds.
-- **ML & Data Pipeline Tests:** 6/6 dataset archival tests passed (`tests/ml/test_dataset_archival.py`).
-- **Frontend Test Suite:** 43/43 Node.js test runner tests passed (`frontend/tests/*.test.js`).
+- **Backend Test Suite:** 145 backend tests in `backend/tests/` passed (100%), including the 9 dedicated staging acceptance tests (`test_staging_acceptance.py`) executed in 26.65 seconds.
+- **ML & Vision Pipeline Tests:** 55 tests in `tests/ml/` and 9 tests in `tests/api/` passed (64/64 passed in 39.17s).
+- **Frontend Test Suite:** 43/43 Node.js test runner tests passed (`frontend/tests/*.test.js` in 1.19s).
 - **TypeScript Static Verification:** `cd frontend; npx tsc --noEmit` executed with **0 errors**.
-- **Working Tree Baseline:** Built on reconciled commit `f320466` with zero unmanaged code modifications.
+- **Working Tree Baseline:** Built on audited commit `2af491e` with zero unmanaged code modifications.
 - **Status:** **`COMPLETE_VERIFIED`**
 
 ### 3.3 DIM-03: Free-Tier Compliance & Zero-Cost Governance
