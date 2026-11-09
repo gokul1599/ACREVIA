@@ -3,7 +3,7 @@
 
 **Programme:** ACREVIA — Agricultural Intelligence Platform  
 **Document Code:** `PHASE_02_INSTITUTIONAL_OUTREACH_AUTHORIZATION_REGISTER.md`  
-**Audited Baseline Commit:** `14dc601`  
+**Audited Baseline Commit:** `62c008f`  
 **Target Geography:** Telangana, India  
 **Target Institutions:**
 1. Krishi Vigyan Kendra (KVK), Malyal — Mahabubabad District
@@ -51,13 +51,13 @@ The independent technical, security, legal, and institutional audit evaluated th
 
 | Dimension ID | Operational Readiness Dimension | Audit Status | Key Evidence / Verification Basis | Remaining Dependencies / Limits |
 |---|---|---|---|---|
-| **R01** | Repository Integrity & Lineage | `COMPLETE_VERIFIED` | HEAD `14dc601` on `main`; clean working tree; commit lineage unbroken | None |
+| **R01** | Repository Integrity & Lineage | `COMPLETE_VERIFIED` | HEAD `62c008f` on `main`; clean working tree; commit lineage unbroken | None |
 | **R02** | Automated Test Verification | `COMPLETE_VERIFIED` | 252 physical tests collected and passing (145 backend + 55 ML + 9 vision + 43 frontend); 0 TS errors | None |
-| **R03** | Staging Cloud Architecture | `COMPLETE_WITH_LIMITATIONS` | `frontend/vercel.json` (`sin1`), `.env.staging.example` verified; live deploy pending sign-off | Owner authorization for live preview deploy (A08) |
-| **R04** | Neon DB Staging & Tenant Isolation | `COMPLETE_WITH_LIMITATIONS` | Application-layer tenant isolation verified (HTTP 403 on cross-tenant read); DB-level RLS deferred | Documented limitation (D2) |
+| **R03** | Staging Cloud Architecture | `OPEN — LIVE_DEPLOYMENT_PENDING` | `frontend/vercel.json` (`sin1`), `.env.staging.example` verified; live deploy pending sign-off | Owner authorization for live preview deploy (A08) |
+| **R04** | Neon DB Staging & Tenant Isolation | `DOCUMENTED_RESIDUAL_LIMITATION` | Application-layer tenant isolation verified (HTTP 403 on cross-tenant read); DB-level RLS deferred | Documented limitation (D2) |
 | **R05** | AI Availability, Cost & Fallback | `COMPLETE_WITH_LIMITATIONS` | Preview model `qwen/qwen3.8-27b` with extractive RAG fallback; free-tier limits enforced | Documented limitation (D4, D10) |
 | **R06** | Weather & Satellite Resilience | `COMPLETE_VERIFIED` | Earth Search $\rightarrow$ Planetary Computer fallback verified; Open-Meteo 15-min cache; NDVI verified | None |
-| **R07** | Redis & Rate-Limit Protection | `COMPLETE_WITH_LIMITATIONS` | Staging namespace `acrevia_staging` isolated; fail-open noted as P2 risk for auth endpoints | Add `fail_closed` to login route |
+| **R07** | Redis & Rate-Limit Protection | `DOCUMENTED_RESIDUAL_RISK` | Staging namespace `acrevia_staging` isolated; fail-open mode retains residual multi-instance risk | Add `fail_closed` to login route (D3) |
 | **R08** | Data Governance & DPDP Posture | `COMPLETE_WITH_LIMITATIONS` | Comprehensive data lifecycle mapped; `DPDP_COMPLIANCE_CERTIFICATION = NOT_CLAIMED` | Formal legal review required (D8) |
 | **R09** | Farmer Consent Architecture | `COMPLETE_VERIFIED` | Trilingual consent forms prepared in Telugu, English, Hindi; right to withdraw documented | Awaits cohort onboarding |
 | **R10** | Institutional Due Diligence | `COMPLETE_VERIFIED` | Four institutions verified against `pjtau.edu.in`, `icar.org.in`, `telangana.gov.in` | None |
@@ -77,7 +77,7 @@ The independent technical, security, legal, and institutional audit evaluated th
 | Research Feasibility Protocol | `COMPLETE` | `REVIEWED` | `[ ] APPROVED   Initials: _______` |
 | Bilingual Outreach Email Templates | `COMPLETE` | `REVIEWED` | `[ ] APPROVED   Initials: _______` |
 | Demonstration Procedure & Blueprint | `COMPLETE` | `REVIEWED` | `[ ] APPROVED   Initials: _______` |
-| Defect & Risk Register (D1–D13) | `COMPLETE` | `REVIEWED` | `[ ] APPROVED   Initials: _______` |
+| Defect & Residual Risk Register (D1–D13) | `COMPLETE` | `REVIEWED` | `[ ] APPROVED   Initials: _______` |
 
 ---
 
@@ -94,11 +94,17 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Recipient Institution    | Krishi Vigyan Kendra, Malyal (PJTSAU / ICAR)                                                |
 | Verified Channel         | kvkwgl@pjtau.edu.in (Alternate: kvk.wgl@gmail.com | Phone: 8333818262)                     |
 | Verified Addressee       | The Programme Coordinator (Dr. Banoth Dileep Kumar, Senior Scientist & Head / Entomologist) |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
 | Approved Version         | [  ] English Only      [  ] Telugu Only      [  ] Bilingual English/Telugu                  |
 | Approved Attachments     | [  ] Initial text only (No attachments)                                                     |
 |                          | [  ] Attach Collaboration Proposal (`KVK_MALYAL_COLLABORATION_PROPOSAL.md`)                 |
 | Permitted Scope          | Preliminary exploratory inquiry only; request for 20-min virtual or station briefing        |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Release Readiness        | READY_FOR_OWNER_APPROVAL (Requires owner signature & sender credentials)                    |
+| Execution Status         | NOT_EXECUTED (INSTITUTIONAL_EMAILS_SENT = FALSE)                                            |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -112,11 +118,17 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Recipient Institution    | Krishi Vigyan Kendra, Kampasagar (PJTSAU / ICAR)                                            |
 | Verified Channel         | kvkkampasagar@pjtau.edu.in (Alternate: kvkkampasagar2011@gmail.com | Phone: 8333818260)     |
 | Verified Addressee       | The Programme Coordinator (Dr. Chandrashekar, Senior Scientist & Head / Agronomist)         |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
 | Approved Version         | [  ] English Only      [  ] Telugu Only      [  ] Bilingual English/Telugu                  |
 | Approved Attachments     | [  ] Initial text only (No attachments)                                                     |
 |                          | [  ] Attach Collaboration Proposal (`KVK_KAMPASAGAR_COLLABORATION_PROPOSAL.md`)             |
 | Permitted Scope          | Preliminary exploratory inquiry only; request for 20-min virtual or station briefing        |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Release Readiness        | READY_FOR_OWNER_APPROVAL (Requires owner signature & sender credentials)                    |
+| Execution Status         | NOT_EXECUTED (INSTITUTIONAL_EMAILS_SENT = FALSE)                                            |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -130,10 +142,16 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Recipient Institution    | Directorate of Extension, Professor Jayashankar Telangana State Agricultural University     |
 | Verified Channel         | de@pjtau.edu.in (Phone: 040-24015011 to 040-24015015)                                      |
 | Verified Addressee       | To: The Office of the Director of Extension, PJTSAU                                         |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
 | Approved Version         | [  ] English Only      [  ] Telugu Only      [  ] Bilingual English/Telugu                  |
 | Approved Attachments     | [  ] One-Page Executive Research Summary Brief of ACREVIA Initiative                        |
 | Permitted Scope          | Informational courtesy notification only; requesting administrative extension guidance      |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Release Readiness        | READY_FOR_OWNER_APPROVAL (Requires owner signature & sender credentials)                    |
+| Execution Status         | NOT_EXECUTED (INSTITUTIONAL_EMAILS_SENT = FALSE)                                            |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -147,11 +165,17 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Recipient Institution    | ICAR — Agricultural Technology Application Research Institute, Zone X, Hyderabad            |
 | Verified Channel         | director.atari-hyd@icar.org.in (Alternate: atarihyderabad@yahoo.com | Phone: 040-24006500)   |
 | Verified Addressee       | Dr. Shaik N. Meera, Director, ICAR-ATARI Zone X                                             |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
 | Approved Version         | [  ] English Only      [  ] Telugu Only      [  ] Bilingual English/Telugu                  |
 | Approved Attachments     | [  ] Zonal Briefing Note on ACREVIA Academic Feasibility Study Proposals                    |
 | Permitted Scope          | Informational zonal briefing only; requesting academic extension observations                |
 | Strategic Context        | OPTIONAL — Direct operational authority for state KVKs resides with PJTSAU DoE             |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Release Readiness        | HOLD_RECOMMENDED (Option A: Direct KVK engagement first)                                    |
+| Execution Status         | NOT_EXECUTED (INSTITUTIONAL_EMAILS_SENT = FALSE)                                            |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -164,8 +188,13 @@ Every action is isolated into an independent decision gate. All decisions are pr
 +--------------------------+---------------------------------------------------------------------------------------------+
 | Authorized Documents     | KVK Proposals, Term Sheet Outline, and 30-Day Feasibility Protocol                          |
 | Distribution Trigger     | Transmit upon receipt of positive reply or expression of interest from KVK leadership       |
-| Permitted Recipients     | Program Coordinators and assigned Subject Matter Specialists (SMS)                         |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
+| Release Readiness        | CONDITIONAL_ON_REPLY (Hold until institutional response is received)                       |
+| Execution Status         | NOT_EXECUTED (Zero documents shared externally)                                             |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -178,8 +207,13 @@ Every action is isolated into an independent decision gate. All decisions are pr
 +--------------------------+---------------------------------------------------------------------------------------------+
 | Meeting Scope            | 20-minute virtual conference or on-station introductory briefing with KVK scientists        |
 | Meeting Agenda           | System overview, foliar CV explainability, KrishiBrain citations, agronomist portal review  |
-| Permitted Participants   | Project leadership and assigned university scientists                                       |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
+| Release Readiness        | READY_FOR_OWNER_APPROVAL (Requires owner sign-off)                                          |
+| Execution Status         | NOT_EXECUTED (No meetings requested or scheduled)                                           |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -193,7 +227,13 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Demonstration Scope      | Standard 12-point technical walkthrough adhering to PHASE_02_LIVE_DEMONSTRATION_READINESS   |
 | Data Restriction         | STRICTLY SYNTHETIC DATA ONLY. Zero real farmer names, phone numbers, or coordinates.        |
 | Delivery Mode            | Local screen-share demonstration (Default)                                                  |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
+| Release Readiness        | READY_FOR_OWNER_APPROVAL (Fully prepared locally)                                           |
+| Execution Status         | NOT_EXECUTED (No demonstration conducted)                                                   |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -208,7 +248,13 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Prerequisites            | .env.staging.example variables populated; Neon staging branch active; isolated Upstash ns   |
 | Access Security          | Password protected / HTTP Basic Auth enabled to prevent public indexing                     |
 | Financial Boundary       | 100% Free-tier operational limits enforced in code                                          |
-| Owner Decision           | [  ] AUTHORIZED (Cloud URL)    [  ] HOLD (Local Screen Share Only)    [  ] REJECTED         |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
+| Release Readiness        | HOLD_FOR_OWNER_CHOICE (Cloud URL vs Local Screen Share)                                     |
+| Execution Status         | NOT_EXECUTED (LIVE_STAGING_DEPLOYMENT_TRIGGERED = FALSE)                                     |
+| Owner Decision           | [  ] AUTHORIZED (Cloud URL)    [  ] HOLD (Local Screen Share Only)    [  ] REJECT         |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -221,8 +267,13 @@ Every action is isolated into an independent decision gate. All decisions are pr
 +--------------------------+---------------------------------------------------------------------------------------------+
 | Negotiation Scope        | Non-binding research MoU based on ACREVIA_INSTITUTIONAL_COLLABORATION_TERM_SHEET.md         |
 | Governance Principles    | Zero fee, scientist-in-the-loop oversight, DPDP data rights, ICMJE academic authorship      |
-| Review Prerequisite      | Formal legal counsel review prior to institutional execution                                |
-| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECTED                                  |
+| Previous Status          | PENDING                                                                                     |
+| Current Status           | PENDING                                                                                     |
+| Owner Evidence           | None (Blank sign / Unchecked)                                                               |
+| Owner Decision Date      | None                                                                                        |
+| Release Readiness        | HOLD_RECOMMENDED (Pending exploratory meeting and institutional interest)                    |
+| Execution Status         | NOT_EXECUTED (No negotiations initiated)                                                   |
+| Owner Decision           | [  ] APPROVED          [  ] HOLD             [  ] REJECT                                    |
 | Date & Signature         | Date: ________________________   Signature: _______________________________________________ |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -234,6 +285,7 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Current Gating Status    | STRICTLY NOT_AUTHORIZED                                                                     |
 | Governance Requirement   | Requires executed institutional MoU, ethics committee approval, and village notification   |
 | Operational Status       | FARMER_RECRUITMENT_STARTED = FALSE                                                          |
+| Execution Status         | NOT_EXECUTED (Zero farmers surveyed or recruited)                                           |
 | Owner Override Allowed   | NO — Hard architectural and legal gate                                                      |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -243,8 +295,9 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | GATE A11: FARMER PERSONAL DATA & GPS COORDINATE COLLECTION                                                             |
 +--------------------------+---------------------------------------------------------------------------------------------+
 | Current Gating Status    | STRICTLY NOT_AUTHORIZED                                                                     |
-| Governance Requirement   | Requires physically executed bilingual farmer consent forms (Telugu/English)                |
+| Governance Requirement   | Requires physically executed bilingual farmer consent forms (DPDP 2023)                |
 | Operational Status       | FARMER_DATA_COLLECTION_STARTED = FALSE                                                      |
+| Execution Status         | NOT_EXECUTED (Zero personal data or private GPS coordinates collected)                      |
 | Owner Override Allowed   | NO — Hard architectural and legal gate                                                      |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
@@ -256,6 +309,7 @@ Every action is isolated into an independent decision gate. All decisions are pr
 | Current Gating Status    | STRICTLY NOT_AUTHORIZED                                                                     |
 | Governance Requirement   | Requires KVK scientist on-farm supervision, baseline soil/water testing, and ethics review |
 | Operational Status       | FIELD_PILOT_STATUS = NOT_AUTHORIZED                                                         |
+| Execution Status         | NOT_EXECUTED (Zero on-farm trials or interventions conducted)                               |
 | Owner Override Allowed   | NO — Hard architectural and legal gate                                                      |
 +--------------------------+---------------------------------------------------------------------------------------------+
 ```
