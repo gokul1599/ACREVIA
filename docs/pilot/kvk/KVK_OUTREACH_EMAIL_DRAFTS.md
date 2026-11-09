@@ -11,8 +11,11 @@
 
 ## 1. Outreach Draft: Programme Coordinator, KVK Malyal (Mahabubabad)
 
-**To:** Programme Coordinator / Senior Scientist & Head, Krishi Vigyan Kendra, Malyal, Mahabubabad District, Telangana  
-**CC:** Subject Matter Specialist (Plant Protection), KVK Malyal  
+**To:** The Programme Coordinator (Dr. B. Dileep Kumar, Senior Scientist & Head / Entomologist)  
+**Institution:** Krishi Vigyan Kendra, Malyal, Mahabubabad District, Telangana – 506 101  
+**Official Email:** `kvkwgl@pjtau.edu.in`  
+**CC:** `dileep_kumar453@pjtau.edu.in` (Subject Matter Specialist / Plant Protection)  
+**Office Phone:** `8333818262` / `08719-240182`  
 **Subject:** Proposal for Joint Scientific Evaluation: ACREVIA Free Agricultural Intelligence & Precision Diagnostics for Cotton & Chilli Smallholders  
 
 ---
@@ -61,8 +64,11 @@ Platform Staging: `https://staging.acrevia.org`
 
 ## 2. Outreach Draft: Programme Coordinator, KVK Kampasagar (Nalgonda)
 
-**To:** Programme Coordinator / Senior Scientist & Head, Krishi Vigyan Kendra, Kampasagar, Nalgonda District, Telangana  
-**CC:** Subject Matter Specialist (Agronomy / Plant Protection), KVK Kampasagar  
+**To:** The Programme Coordinator (Dr. Chandrashekar, Senior Scientist & Head / Agronomist)  
+**Institution:** Krishi Vigyan Kendra, Kampasagar, Babusaipet (Post), Tripuraram Mandal, Nalgonda District, Telangana – 508 207  
+**Official Email:** `kvkkampasagar@pjtau.edu.in`  
+**CC:** `kvkkampasagar2011@gmail.com` (Subject Matter Specialist / Plant Protection & Agronomy)  
+**Office Phone:** `8333818260`  
 **Subject:** Proposal for Joint Technology Pilot: ACREVIA Precision Water Management, Rice Blast Forecasting & Cotton Diagnostics in NSP Command Area  
 
 ---
@@ -112,7 +118,11 @@ Platform Staging: `https://staging.acrevia.org`
 
 ## 3. Informational Courtesy Notice: Director of Extension, PJTSAU (Hyderabad)
 
-**To:** Director of Extension, Professor Jayashankar Telangana State Agricultural University (PJTSAU), Rajendranagar, Hyderabad  
+**To:** Dr. Ch. Venu Gopal Reddy, Director of Extension  
+**Institution:** Professor Jayashankar Telangana State Agricultural University (PJTSAU)  
+**Campus Address:** Administrative Building, PJTSAU Campus, Rajendranagar, Hyderabad, Telangana – 500 030  
+**Official Email:** `de@pjtau.edu.in`  
+**Office Phone:** `040-24015011` / `040-24015017`  
 **Subject:** Courtesy Notification: ACREVIA Open-Access Agricultural Intelligence Platform — Scientific Validation Proposals Submitted to KVK Malyal & KVK Kampasagar  
 
 ---

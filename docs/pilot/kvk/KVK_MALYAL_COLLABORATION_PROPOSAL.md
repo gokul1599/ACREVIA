@@ -11,8 +11,10 @@
 
 | Entity | Details |
 |---|---|
-| **Proposed Institutional Partner** | Krishi Vigyan Kendra (KVK), Malyal, Mahabubabad District, Telangana |
-| **Parent University / Council** | Professor Jayashankar Telangana State Agricultural University (PJTSAU) / ICAR |
+| **Proposed Institutional Partner** | Krishi Vigyan Kendra (KVK), Malyal, Mahabubabad District, Telangana – 506 101 |
+| **Programme Coordinator / Head** | Dr. B. Dileep Kumar, Senior Scientist & Head / Entomologist |
+| **Official Institutional Contact** | Email: `kvkwgl@pjtau.edu.in` • Phone: `8333818262` / `08719-240182` |
+| **Parent University / Council** | Professor Jayashankar Telangana State Agricultural University (PJTSAU) / ICAR (ATARI Zone-X) |
 | **Technology Platform** | ACREVIA — Agricultural Intelligence Platform |
 | **Target Agro-Climatic Zone** | Central Telangana Zone (Mahabubabad, Warangal rural tribal/smallholder belt) |
 | **Focal Crops** | Cotton (*Gossypium hirsutum*) and Chilli (*Capsicum annuum*) |

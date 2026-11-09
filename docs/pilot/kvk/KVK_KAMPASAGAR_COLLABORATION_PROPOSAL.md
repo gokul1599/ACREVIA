@@ -11,8 +11,10 @@
 
 | Entity | Details |
 |---|---|
-| **Proposed Institutional Partner** | Krishi Vigyan Kendra (KVK), Kampasagar, Nalgonda District, Telangana |
-| **Parent University / Council** | Professor Jayashankar Telangana State Agricultural University (PJTSAU) / ICAR |
+| **Proposed Institutional Partner** | Krishi Vigyan Kendra (KVK), Kampasagar, Babusaipet (Post), Nalgonda District, Telangana – 508 207 |
+| **Programme Coordinator / Head** | Dr. Chandrashekar, Senior Scientist & Head / Agronomist |
+| **Official Institutional Contact** | Email: `kvkkampasagar@pjtau.edu.in` • Phone: `8333818260` |
+| **Parent University / Council** | Professor Jayashankar Telangana State Agricultural University (PJTSAU) / ICAR (ATARI Zone-X) |
 | **Technology Platform** | ACREVIA — Agricultural Intelligence Platform |
 | **Target Agro-Climatic Zone** | Southern Telangana Zone (Nagarjuna Sagar Left Canal command area) |
 | **Focal Crops** | Rice (Paddy - *Oryza sativa*) and Cotton (*Gossypium hirsutum*) |
