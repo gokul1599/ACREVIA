@@ -235,12 +235,25 @@ def generate_rls_ddl(table_name: str, category: TableCategory, column_name: str 
     """
     Generates standard PostgreSQL DDL for enabling Row-Level Security
     and establishing strict isolation policies.
+
+    Combines a base PERMISSIVE policy with a RESTRICTIVE tenant isolation policy.
+    In PostgreSQL RLS architecture:
+      - At least one PERMISSIVE policy must grant access for an operation.
+      - RESTRICTIVE policies combine via AND to strictly enforce tenant boundary constraints.
     """
     if category == TableCategory.TENANT_DIRECT:
         return f"""
 -- Table: {table_name} (Direct Tenant Isolation)
 ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_base_access_policy ON {table_name};
+CREATE POLICY {table_name}_base_access_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING (true)
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS {table_name}_tenant_isolation_policy ON {table_name};
 CREATE POLICY {table_name}_tenant_isolation_policy ON {table_name}
@@ -261,6 +274,14 @@ CREATE POLICY {table_name}_tenant_isolation_policy ON {table_name}
 -- Table: {table_name} (User-Owned Isolation)
 ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_base_access_policy ON {table_name};
+CREATE POLICY {table_name}_base_access_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING (true)
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS {table_name}_user_isolation_policy ON {table_name};
 CREATE POLICY {table_name}_user_isolation_policy ON {table_name}
@@ -304,6 +325,14 @@ CREATE POLICY {table_name}_admin_write_policy ON {table_name}
 ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS {table_name}_base_access_policy ON {table_name};
+CREATE POLICY {table_name}_base_access_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING (true)
+    WITH CHECK (true);
+
 DROP POLICY IF EXISTS {table_name}_child_isolation_policy ON {table_name};
 CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
     AS RESTRICTIVE
@@ -321,6 +350,14 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
                         SELECT 1 FROM information_schema.columns
                         WHERE table_name = '{parent}' AND column_name = 'farm_id'
                     )
+                    AND ({parent}.farm_id::text = current_setting('app.current_tenant_id', true))
+                )
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = '{parent}' AND column_name = 'user_id'
+                    )
+                    AND ({parent}.user_id::text = current_setting('app.current_user_id', true))
                 )
             )
         )
@@ -330,6 +367,23 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
         OR EXISTS (
             SELECT 1 FROM {parent}
             WHERE {parent}.id = {table_name}.{fk}
+            AND (
+                {parent}.id::text = current_setting('app.current_tenant_id', true)
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = '{parent}' AND column_name = 'farm_id'
+                    )
+                    AND ({parent}.farm_id::text = current_setting('app.current_tenant_id', true))
+                )
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = '{parent}' AND column_name = 'user_id'
+                    )
+                    AND ({parent}.user_id::text = current_setting('app.current_user_id', true))
+                )
+            )
         )
     );
 """

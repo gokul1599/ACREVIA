@@ -1,0 +1,133 @@
+"""
+ACREVIA - Real PostgreSQL RLS Staging Verification Harness.
+Phase 05 Security Verification (TASK-S05-02).
+
+Safely executes against an authorized, isolated Neon staging database branch.
+Strictly aborts if any production connection string or host indicator is detected.
+"""
+
+import os
+import sys
+import argparse
+from typing import Dict, Any, List
+import sqlalchemy as sa
+from sqlalchemy import text
+
+# Add project root to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from backend.app.database.rls import TABLE_CLASSIFICATION, TableCategory
+from scripts.neon_staging_branch_spec import is_production_url
+
+
+def verify_staging_database_rls(connection_url: str) -> Dict[str, Any]:
+    """
+    Executes PostgreSQL catalog inspection and policy verification on an isolated staging database.
+    """
+    if is_production_url(connection_url):
+        print("[CRITICAL SAFETY ERROR] Connection URL identified as PRODUCTION. Aborting immediately!")
+        sys.exit(1)
+
+    print(f"[RLS Verification] Connecting to safe staging database...")
+    engine = sa.create_engine(connection_url)
+
+    report: Dict[str, Any] = {
+        "verified_tables_count": 0,
+        "rls_enabled_tables": [],
+        "force_rls_tables": [],
+        "policy_count": 0,
+        "policies_by_table": {},
+        "criteria_results": {},
+        "runtime_role_safe": False,
+    }
+
+    with engine.connect() as conn:
+        dialect_name = conn.dialect.name
+        if dialect_name != "postgresql":
+            print(f"[Error] Target database dialect is '{dialect_name}'. PostgreSQL is required for real RLS verification.")
+            return report
+
+        # 1. Inspect RLS flags from pg_class
+        result = conn.execute(text("""
+            SELECT relname, relrowsecurity, relforcerowsecurity
+            FROM pg_class
+            JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+            WHERE pg_namespace.nspname = 'public' AND pg_class.relkind = 'r';
+        """))
+        for row in result:
+            tbl = row[0]
+            row_sec = row[1]
+            force_sec = row[2]
+            if row_sec:
+                report["rls_enabled_tables"].append(tbl)
+            if force_sec:
+                report["force_rls_tables"].append(tbl)
+
+        # 2. Inspect policies from pg_policies
+        pol_result = conn.execute(text("""
+            SELECT tablename, policyname, permissive, roles, cmd, qual, with_check
+            FROM pg_policies
+            WHERE schemaname = 'public';
+        """))
+        for row in pol_result:
+            tbl = row[0]
+            pol_name = row[1]
+            permissive = row[2]
+            roles = row[3]
+            cmd = row[4]
+            report["policy_count"] += 1
+            if tbl not in report["policies_by_table"]:
+                report["policies_by_table"][tbl] = []
+            report["policies_by_table"][tbl].append({
+                "policy_name": pol_name,
+                "permissive": permissive,
+                "roles": roles,
+                "cmd": cmd
+            })
+
+        # 3. Verify Runtime Role Privileges (must NOT have BYPASSRLS or SUPERUSER)
+        role_result = conn.execute(text("""
+            SELECT rolname, rolsuper, rolbypassrls
+            FROM pg_roles
+            WHERE rolname = CURRENT_USER;
+        """))
+        current_role = role_result.fetchone()
+        if current_role:
+            rolname, rolsuper, rolbypassrls = current_role
+            report["current_user"] = rolname
+            report["runtime_role_safe"] = (not rolsuper) and (not rolbypassrls)
+            print(f"[Role Check] User '{rolname}': SUPERUSER={rolsuper}, BYPASSRLS={rolbypassrls} (Safe: {report['runtime_role_safe']})")
+
+    report["verified_tables_count"] = len(report["rls_enabled_tables"])
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser(description="ACREVIA Staging RLS Verification Harness")
+    parser.add_argument("--url", type=str, help="PostgreSQL Staging Connection URL (Masked)")
+    parser.add_argument("--dry-run", action="store_true", help="Perform preflight safety checks without running queries")
+    args = parser.parse_args()
+
+    target_url = args.url or os.environ.get("STAGING_DATABASE_URL", "")
+
+    if not target_url:
+        print("[Notice] No staging database URL provided. Set STAGING_DATABASE_URL or pass --url.")
+        print("[Notice] Real PostgreSQL integration requires an authorized, isolated Neon staging branch.")
+        sys.exit(0)
+
+    if is_production_url(target_url):
+        print("[CRITICAL SAFETY ERROR] Target URL matches production indicators. Aborting immediately!")
+        sys.exit(1)
+
+    if args.dry_run:
+        print("[Dry Run] Staging URL verified as non-production. Ready for authorized execution.")
+        sys.exit(0)
+
+    results = verify_staging_database_rls(target_url)
+    print(f"[Results] RLS Enabled Tables: {len(results['rls_enabled_tables'])}")
+    print(f"[Results] FORCE RLS Tables  : {len(results['force_rls_tables'])}")
+    print(f"[Results] Total Policies    : {results['policy_count']}")
+
+
+if __name__ == "__main__":
+    main()

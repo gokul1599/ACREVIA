@@ -113,3 +113,30 @@ def test_auth_register_fail_closed_when_redis_unreachable(client: TestClient):
             assert "RateLimiter" in resp.json()["detail"] or "unavailable" in resp.json()["detail"].lower()
     finally:
         rate_limiter.set_backend(old_backend)
+
+
+def test_auth_login_quota_exceeded_returns_http_429(client: TestClient, farmer_user):
+    """
+    Verifies that exceeding the 5 requests/min rate limit quota on /auth/login
+    returns HTTP 429 Too Many Requests (distinguished from HTTP 503 dependency failure).
+    """
+    from backend.app.core.rate_limit import InMemoryRateLimiterBackend, rate_limiter
+    old_backend = rate_limiter.backend
+    test_limiter = InMemoryRateLimiterBackend()
+    try:
+        rate_limiter.set_backend(test_limiter)
+        payload = {"phone": farmer_user.phone, "password": "WrongPassword!"}
+
+        # First 5 attempts: return 401 Unauthorized (credentials invalid, but allowed by rate limiter)
+        for _ in range(5):
+            resp = client.post("/api/v1/auth/login", json=payload)
+            assert resp.status_code == 401
+
+        # 6th attempt: quota exceeded, must return HTTP 429 Too Many Requests
+        resp_blocked = client.post("/api/v1/auth/login", json=payload)
+        assert resp_blocked.status_code == 429
+        assert "Retry-After" in resp_blocked.headers
+        assert "Rate limit exceeded" in resp_blocked.json()["detail"]
+    finally:
+        rate_limiter.set_backend(old_backend)
+
