@@ -75,17 +75,21 @@ The scientific processing logic is encapsulated in `Sentinel2Processor`:
    - Sentinel-2 Red (B04) and NIR (B08) have a native spatial resolution of **10 meters**.
    - Scene Classification Layer (SCL) has a native spatial resolution of **20 meters**.
    - SCL is expanded $2\times$ via integer nearest-neighbor resampling to match the 10m grid, preventing edge artifact distortion.
-2. **Cloud & Shadow Masking:**
+2. **Cloud & Shadow Masking & Quality Policies:**
+   - Formalized `CloudMaskPolicy` with `STRICT`, `STANDARD`, and `LENIENT` profiles.
    - Masks out SCL class 3 (*Cloud Shadows*), class 8 (*Cloud Medium Probability*), class 9 (*Cloud High Probability*), class 10 (*Thin Cirrus*), class 0 (*No Data*), and class 1 (*Saturated/Defective*).
-   - Retains classes 4 (*Vegetation*), 5 (*Not Vegetated*), 6 (*Water*), and 7 (*Unclassified Ground*).
-3. **NDVI Calculation:**
+   - Retains classes 4 (*Vegetation*), 5 (*Not Vegetated*), and 6 (*Water*).
+   - Class 2 (*Dark Areas* / wet paddy soils) and class 7 (*Unclassified Ground*) are retained in `STANDARD` to prevent falsely masking irrigated rice fields in Telangana, but masked in `STRICT`.
+3. **NDVI Calculation & Window Reading:**
    $$\text{NDVI} = \frac{\text{NIR} - \text{RED}}{\text{NIR} + \text{RED}}$$
-   - Computed using IEEE-754 float32 precision with epsilon protection ($\ge 10^{-4}$).
+   - Computed using IEEE-754 float32 precision with epsilon protection ($\ge 10^{-4}$) and negative-reflectance rejection.
    - Strictly clamped to $[-1.0, 1.0]$.
-4. **Zonal Plot Statistics:**
-   - Calculates `mean_ndvi`, `min_ndvi`, `max_ndvi`, `std_ndvi`, `cloud_masked_pixel_ratio`, and `valid_pixels`.
-5. **Zero-Fabrication & Cloud Obscuration Withholding:**
-   - If the plot cloud-masked pixel ratio exceeds **80%**, observation ingestion is withheld with status `CLOUD_OBSCURED`.
+   - Streamed via HTTP 206 Range requests and parsed in pure Python with `tifffile`, bypassing Windows WDAC binary issues.
+4. **Zonal Plot Statistics & Geometry Cloud Calculation:**
+   - Calculates `mean_ndvi`, `min_ndvi`, `max_ndvi`, `std_ndvi`, `cloud_masked_pixel_ratio`, `valid_pixel_ratio`, and `valid_pixels`.
+   - Cloud ratio is computed strictly across parcel geometry (`plot_mask > 0`), eliminating scene-level skew.
+5. **Zero-Fabrication & Configurable Withholding:**
+   - If the plot cloud-masked pixel ratio exceeds `max_cloud_cover_fraction` (default **50%**) or valid clear ground pixels fall below `min_valid_pixel_fraction` (default **20%**), observation ingestion is withheld.
    - The platform **never fabricates or interpolates** missing satellite readings.
 
 ---
@@ -135,16 +139,18 @@ In strict adherence to agricultural AI ethics:
 | [`backend/app/api/v1/endpoints/system.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/api/v1/endpoints/system.py) | **MODIFIED** | Updated `/api/v1/system/integrations` to report `earth_search_satellite` with MPC fallback and legacy CDSE alias. |
 | [`backend/app/core/config.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/core/config.py) | **MODIFIED** | Added STAC URLs for Earth Search and Planetary Computer; CDSE keys made non-blocking optional. |
 | [`.env.example`](file:///c:/Users/gokul/OneDrive/Documents/projects/.env.example) | **MODIFIED** | Documented free STAC URLs and clarified zero credentials required for satellite imagery. |
-| [`backend/tests/test_earth_search_satellite.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_earth_search_satellite.py) | **CREATED** | 10 comprehensive tests covering STAC discovery, NDVI raster math, cloud masking, and failover. |
+| [`backend/tests/test_earth_search_satellite.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_earth_search_satellite.py) | **CREATED** | 16 comprehensive tests covering STAC discovery, NDVI raster math, SCL quality policies, zonal geometry masking, SAS token lifecycle, and failover. |
 | [`docs/integrations/SATELLITE_PROVIDER_MIGRATION_REPORT.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/integrations/SATELLITE_PROVIDER_MIGRATION_REPORT.md) | **CREATED** | This comprehensive completion report. |
+| [`docs/integrations/POST_MIGRATION_FINAL_ACCEPTANCE_REPORT.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/integrations/POST_MIGRATION_FINAL_ACCEPTANCE_REPORT.md) | **CREATED** | Final acceptance audit report across WP-01 through WP-07. |
 
 ---
 
 ## 8. Automated Test Suite Results
 
-- **New Earth Search Satellite Suite:** **10 of 10 PASSED** in [`backend/tests/test_earth_search_satellite.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_earth_search_satellite.py).
+- **Expanded Earth Search Satellite Suite:** **16 of 16 PASSED** in [`backend/tests/test_earth_search_satellite.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_earth_search_satellite.py).
 - **Stage 9 Geospatial Suite:** **7 of 7 PASSED** in [`backend/tests/test_stage9.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_stage9.py).
 - **Seven Free Services Suite:** **13 of 13 PASSED** in [`backend/tests/test_seven_services_integration.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_seven_services_integration.py).
+- **Full Backend Fast Suite:** **136 of 136 PASSED** (`pytest -m "not slow"`).
 - **Frontend TypeScript Static Analysis:** **0 errors** (`npx tsc --noEmit` exit code 0).
 
 ---

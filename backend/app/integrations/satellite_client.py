@@ -51,12 +51,34 @@ SCL_CLOUD_HIGH_PROB = 9
 SCL_THIN_CIRRUS = 10
 SCL_SNOW = 11
 
-SCL_CLOUD_SHADOW_CLASSES = {
-    SCL_CLOUD_SHADOW,
-    SCL_CLOUD_MEDIUM_PROB,
-    SCL_CLOUD_HIGH_PROB,
-    SCL_THIN_CIRRUS,
-}
+class CloudMaskPolicy:
+    """
+    Configurable Scene Classification Layer (SCL) quality policies for Sentinel-2 L2A.
+    Explicit treatment of uncertain & shadow pixels:
+    - SCL 0 (NO_DATA): Always masked (sensor margin or missing tile).
+    - SCL 1 (SATURATED_OR_DEFECTIVE): Always masked (sensor saturation or optical defect).
+    - SCL 2 (DARK_AREA): Topographic shadow, deeply wet soil, or burnt fields.
+      * In STRICT: masked.
+      * In STANDARD & LENIENT: kept as valid ground observations to prevent falsely discarding wet paddy soils.
+    - SCL 3 (CLOUD_SHADOW): Always masked (cloud shadows severely suppress reflectance, corrupting NDVI).
+    - SCL 4 (VEGETATION): Kept (primary target).
+    - SCL 5 (NOT_VEGETATED): Kept (bare agricultural soil).
+    - SCL 6 (WATER): Kept (useful for irrigated rice/paddy flooding assessment).
+    - SCL 7 (UNCLASSIFIED): Ambiguous or mixed pixels.
+      * In STRICT: masked.
+      * In STANDARD & LENIENT: kept with uncertainty tagging.
+    - SCL 8 (CLOUD_MEDIUM_PROB): Masked in STRICT & STANDARD; permitted only in LENIENT.
+    - SCL 9 (CLOUD_HIGH_PROB): Always masked (thick opaque cloud).
+    - SCL 10 (THIN_CIRRUS): Semi-transparent clouds. Masked in STRICT & STANDARD; permitted in LENIENT.
+    - SCL 11 (SNOW_OR_ICE): Always masked (irrelevant in tropical Telangana, prevents false high-reflectance spikes).
+    """
+    STRICT = {SCL_NO_DATA, SCL_SATURATED, SCL_DARK_AREA, SCL_CLOUD_SHADOW, SCL_UNCLASSIFIED, SCL_CLOUD_MEDIUM_PROB, SCL_CLOUD_HIGH_PROB, SCL_THIN_CIRRUS, SCL_SNOW}
+    STANDARD = {SCL_NO_DATA, SCL_SATURATED, SCL_CLOUD_SHADOW, SCL_CLOUD_MEDIUM_PROB, SCL_CLOUD_HIGH_PROB, SCL_THIN_CIRRUS, SCL_SNOW}
+    LENIENT = {SCL_NO_DATA, SCL_SATURATED, SCL_CLOUD_SHADOW, SCL_CLOUD_HIGH_PROB, SCL_SNOW}
+
+
+# Default SCL classes treated as cloud or shadow in standard operations
+SCL_CLOUD_SHADOW_CLASSES = CloudMaskPolicy.STANDARD
 
 
 class SatelliteProvider(ABC):
@@ -263,6 +285,8 @@ class PlanetaryComputerProvider(SatelliteProvider):
         self.timeout = timeout
         self.collection = "sentinel-2-l2a"
         self.headers = {"User-Agent": "AcreviaPlatform/1.0 (Telangana Agricultural Earth Intelligence)"}
+        self._cached_sas_token: Optional[str] = None
+        self._sas_token_expiry: float = 0.0
 
     @property
     def provider_name(self) -> str:
@@ -305,15 +329,35 @@ class PlanetaryComputerProvider(SatelliteProvider):
             return {"status": "UNAVAILABLE", "provider": self.provider_name, "error": str(e)}
 
     async def get_sas_token(self) -> Optional[str]:
-        """Obtains free anonymous SAS token from Planetary Computer token service."""
+        """Obtains or returns cached free anonymous SAS token with automatic refresh."""
+        now = time.time()
+        if self._cached_sas_token and now < (self._sas_token_expiry - 60):
+            return self._cached_sas_token
         try:
-            async with httpx.AsyncClient(timeout=5.0, headers=self.headers) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
                 r = await client.get(self.sas_url)
                 if r.status_code == 200:
-                    return r.json().get("token")
+                    data = r.json()
+                    self._cached_sas_token = data.get("token")
+                    expiry_iso = data.get("msft:expiry")
+                    if expiry_iso:
+                        try:
+                            exp_dt = datetime.fromisoformat(expiry_iso.replace("Z", "+00:00"))
+                            self._sas_token_expiry = exp_dt.timestamp()
+                        except Exception:
+                            self._sas_token_expiry = now + 3600
+                    else:
+                        self._sas_token_expiry = now + 3600
+                    return self._cached_sas_token
         except Exception as e:
             logger.warning(f"Could not retrieve MPC SAS token: {e}")
         return None
+
+    def sign_asset_url(self, url: str, sas_token: Optional[str]) -> str:
+        """Appends SAS token query string to Microsoft Planetary Computer asset URLs."""
+        if not sas_token or not url or "?" in url:
+            return url
+        return f"{url}?{sas_token}"
 
     async def search_scenes(
         self,
@@ -449,13 +493,18 @@ class Sentinel2Processor:
         nir_band: np.ndarray,
         scl_band: Optional[np.ndarray] = None,
         plot_mask: Optional[np.ndarray] = None,
+        max_cloud_cover_fraction: float = 0.50,
+        min_valid_pixel_fraction: float = 0.20,
+        cloud_mask_policy: Optional[set] = None,
     ) -> Dict[str, Any]:
         """
         Processes 2D numpy arrays of Sentinel-2 L2A surface reflectance.
         - Validates dimensions and spatial alignment.
         - Resamples 20m SCL to match 10m B04/B08 resolution.
-        - Masks cloud and cloud shadow pixels.
-        - Calculates zonal NDVI statistics across the plot mask.
+        - Applies configurable SCL cloud and shadow quality policy.
+        - Calculates zonal NDVI statistics across the plot mask geometry.
+        - Enforces scientific withholding if plot cloud fraction > max_cloud_cover_fraction (default 50%)
+          or valid clear ground pixels < min_valid_pixel_fraction (default 20%).
         """
         if red_band.shape != nir_band.shape:
             raise ValueError(
@@ -463,6 +512,7 @@ class Sentinel2Processor:
             )
 
         target_h, target_w = red_band.shape
+        active_policy = cloud_mask_policy if cloud_mask_policy is not None else CloudMaskPolicy.STANDARD
 
         # Handle SCL resolution alignment (20m native -> 10m target)
         aligned_scl = None
@@ -495,9 +545,9 @@ class Sentinel2Processor:
                 "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
             }
 
-        # Identify cloud & shadow pixels
+        # Identify cloud & shadow pixels using active policy
         if aligned_scl is not None:
-            cloud_shadow_mask = np.isin(aligned_scl, list(SCL_CLOUD_SHADOW_CLASSES))
+            cloud_shadow_mask = np.isin(aligned_scl, list(active_policy))
             nodata_mask = np.isin(aligned_scl, [SCL_NO_DATA, SCL_SATURATED])
             valid_clear_mask = (~cloud_shadow_mask) & (~nodata_mask)
             
@@ -510,14 +560,16 @@ class Sentinel2Processor:
             valid_clear_mask = np.ones((target_h, target_w), dtype=bool)
             cloud_ratio = 0.0
 
-        # Check if plot is cloud-obscured (> 80% obscured)
-        if cloud_ratio > 0.80:
+        # Check if plot is cloud-obscured beyond configured threshold
+        if cloud_ratio > max_cloud_cover_fraction:
             return {
                 "status": "CLOUD_OBSCURED",
                 "valid": False,
                 "cloud_masked_pixel_ratio": cloud_ratio,
+                "max_allowed_cloud_ratio": max_cloud_cover_fraction,
                 "message": (
-                    f"Observation withheld: plot is {round(cloud_ratio * 100, 1)}% obscured by clouds or cloud shadows. "
+                    f"Observation withheld: plot is {round(cloud_ratio * 100, 1)}% obscured by clouds or cloud shadows "
+                    f"(exceeds maximum allowed threshold of {round(max_cloud_cover_fraction * 100, 1)}%). "
                     "Non-fabrication principle enforced."
                 ),
                 "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
@@ -536,13 +588,19 @@ class Sentinel2Processor:
 
         valid_data_mask = active_mask & (denom > 1e-4) & (nir_f >= 0) & (red_f >= 0)
         valid_pixel_count = int(np.sum(valid_data_mask))
+        valid_pixel_ratio = round(valid_pixel_count / effective_plot_pixels, 4)
 
-        if valid_pixel_count < 1:
+        if valid_pixel_ratio < min_valid_pixel_fraction or valid_pixel_count < 1:
             return {
                 "status": "INSUFFICIENT_CLEAR_PIXELS",
                 "valid": False,
                 "cloud_masked_pixel_ratio": cloud_ratio,
-                "message": "No clear, valid reflectance pixels remaining after cloud and nodata masking.",
+                "valid_pixel_ratio": valid_pixel_ratio,
+                "min_required_valid_ratio": min_valid_pixel_fraction,
+                "message": (
+                    f"Observation withheld: only {round(valid_pixel_ratio * 100, 1)}% valid clear reflectance pixels remain "
+                    f"(requires minimum of {round(min_valid_pixel_fraction * 100, 1)}% valid pixels across plot geometry)."
+                ),
                 "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
             }
 
@@ -564,9 +622,54 @@ class Sentinel2Processor:
             "std_ndvi": std_ndvi,
             "cloud_masked_pixel_ratio": cloud_ratio,
             "valid_pixels": valid_pixel_count,
+            "valid_pixel_ratio": valid_pixel_ratio,
             "total_plot_pixels": effective_plot_pixels,
             "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
         }
+
+    @classmethod
+    async def fetch_cog_tile(
+        cls,
+        cog_url: str,
+        tile_index: int = 0,
+        timeout: float = 15.0
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Reads a single tile window from a remote Cloud-Optimized GeoTIFF using HTTP Range requests.
+        Eliminates downloading large 200MB+ images over the network.
+        Uses pure-Python tifffile for robust streaming header parsing and tile decompression.
+        """
+        import io
+        import tifffile
+        
+        headers = {"Range": "bytes=0-1048575", "User-Agent": "AcreviaPlatform/1.0"}
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            hdr_resp = await client.get(cog_url, headers=headers)
+            if hdr_resp.status_code not in [200, 206]:
+                raise RuntimeError(f"Failed to fetch COG header: HTTP {hdr_resp.status_code}")
+
+            with tifffile.TiffFile(io.BytesIO(hdr_resp.content)) as tif:
+                p0 = tif.pages[0]
+                total_tiles = len(p0.dataoffsets)
+                idx = min(tile_index, total_tiles - 1)
+                offset = p0.dataoffsets[idx]
+                count = p0.databytecounts[idx]
+                meta = {
+                    "image_shape": p0.shape,
+                    "tile_shape": p0.tile,
+                    "dtype": str(p0.dtype),
+                    "total_tiles": total_tiles,
+                    "geotags": p0.geotiff_tags if hasattr(p0, "geotiff_tags") else {}
+                }
+
+            tile_headers = {"Range": f"bytes={offset}-{offset + count - 1}", "User-Agent": "AcreviaPlatform/1.0"}
+            tile_resp = await client.get(cog_url, headers=tile_headers)
+            if tile_resp.status_code not in [200, 206]:
+                raise RuntimeError(f"Failed to fetch COG tile bytes: HTTP {tile_resp.status_code}")
+
+            with tifffile.TiffFile(io.BytesIO(hdr_resp.content)) as tif:
+                tile_arr = tif.pages[0].decode(tile_resp.content, idx)[0].squeeze()
+                return tile_arr, meta
 
 
 class CompositeSatelliteClient:
@@ -634,9 +737,14 @@ class CompositeSatelliteClient:
         end_date: Optional[datetime] = None,
         max_cloud_cover_percent: float = 20.0,
         limit: int = 5,
+        fallback_on_empty: bool = False,
     ) -> Dict[str, Any]:
         """
         Executes scene search using Earth Search with automated fallback to Planetary Computer.
+        - By default (fallback_on_empty=False), legitimate 0-scene searches (e.g. strict cloud threshold)
+          are treated as valid observations without spuriously engaging failover.
+        - Automated failover engages when primary encounters outages, HTTP 429/5xx, timeouts, or connection errors.
+        - Provenance metadata tracks primary provider, effective provider, and failover reasons.
         """
         # 1. Attempt Primary Provider (Earth Search)
         res = await self.primary_provider.search_scenes(
@@ -648,12 +756,18 @@ class CompositeSatelliteClient:
             limit=limit,
         )
 
-        if res.get("success") and res.get("scenes_count", 0) > 0:
-            return res
+        if res.get("success"):
+            has_scenes = res.get("scenes_count", 0) > 0
+            if has_scenes or not fallback_on_empty:
+                res["failover_engaged"] = False
+                res["primary_provider"] = self.primary_provider.provider_name
+                res["effective_provider"] = self.primary_provider.provider_name
+                return res
 
         # 2. Automated Failover to Secondary Provider (Planetary Computer)
+        failover_reason = "PRIMARY_EMPTY" if res.get("success") else (res.get("message") or res.get("error_code") or "OUTAGE")
         logger.info(
-            f"Primary Earth Search returned {res.get('scenes_count', 0)} scenes or error: {res.get('message')}. "
+            f"Primary Earth Search returned {res.get('scenes_count', 0)} scenes or error: {failover_reason}. "
             "Failing over to Microsoft Planetary Computer..."
         )
         fb_res = await self.secondary_provider.search_scenes(
@@ -667,13 +781,20 @@ class CompositeSatelliteClient:
 
         if fb_res.get("success"):
             fb_res["failover_engaged"] = True
+            fb_res["primary_provider"] = self.primary_provider.provider_name
+            fb_res["effective_provider"] = self.secondary_provider.provider_name
+            fb_res["failover_reason"] = failover_reason
             return fb_res
 
-        # If both failed, return the primary error with fallback note
+        # If both failed, return structured error with provenance
         return {
             "success": False,
             "error_code": "ALL_PROVIDERS_FAILED",
             "message": f"Earth Search failed ({res.get('message')}) and Planetary Computer failed ({fb_res.get('message')}).",
+            "primary_provider": self.primary_provider.provider_name,
+            "fallback_provider": self.secondary_provider.provider_name,
+            "failover_engaged": True,
+            "failover_reason": failover_reason,
             "attribution": EARTH_SEARCH_ATTRIBUTION,
             "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER,
         }

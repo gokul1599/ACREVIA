@@ -23,13 +23,23 @@ from backend.app.integrations.satellite_client import (
     Sentinel2Processor,
     CompositeSatelliteClient,
     satellite_client,
+    CloudMaskPolicy,
     SATELLITE_EVIDENCE_DISCLAIMER,
     EARTH_SEARCH_ATTRIBUTION,
     PLANETARY_COMPUTER_ATTRIBUTION,
     TELANGANA_BBOX,
-    SCL_CLOUD_HIGH_PROB,
+    SCL_NO_DATA,
+    SCL_SATURATED,
+    SCL_DARK_AREA,
     SCL_CLOUD_SHADOW,
-    SCL_VEGETATION
+    SCL_VEGETATION,
+    SCL_NOT_VEGETATED,
+    SCL_WATER,
+    SCL_UNCLASSIFIED,
+    SCL_CLOUD_MEDIUM_PROB,
+    SCL_CLOUD_HIGH_PROB,
+    SCL_THIN_CIRRUS,
+    SCL_SNOW
 )
 from backend.app.services.satellite_service import SatelliteService
 
@@ -260,3 +270,213 @@ def test_system_integrations_reports_earth_search(client: TestClient):
     assert "copernicus_data_space" in services
     cdse = services["copernicus_data_space"]
     assert cdse.get("auth_required") is False
+
+
+# =============================================================================
+# 5. Scientific Quality Controls, SCL Policies & Zonal Masking Tests
+# =============================================================================
+
+def test_cloud_mask_policy_definitions_and_behavior():
+    """Validates STRICT, STANDARD, and LENIENT SCL masking behaviors."""
+    # SCL 2 (Dark Area) & SCL 7 (Unclassified) behavior across policies
+    assert SCL_DARK_AREA in CloudMaskPolicy.STRICT
+    assert SCL_DARK_AREA not in CloudMaskPolicy.STANDARD
+    assert SCL_DARK_AREA not in CloudMaskPolicy.LENIENT
+
+    assert SCL_UNCLASSIFIED in CloudMaskPolicy.STRICT
+    assert SCL_UNCLASSIFIED not in CloudMaskPolicy.STANDARD
+    assert SCL_UNCLASSIFIED not in CloudMaskPolicy.LENIENT
+
+    # SCL 8 (Medium Prob Cloud) & SCL 10 (Thin Cirrus) behavior across policies
+    assert SCL_CLOUD_MEDIUM_PROB in CloudMaskPolicy.STRICT
+    assert SCL_CLOUD_MEDIUM_PROB in CloudMaskPolicy.STANDARD
+    assert SCL_CLOUD_MEDIUM_PROB not in CloudMaskPolicy.LENIENT
+
+    assert SCL_THIN_CIRRUS in CloudMaskPolicy.STRICT
+    assert SCL_THIN_CIRRUS in CloudMaskPolicy.STANDARD
+    assert SCL_THIN_CIRRUS not in CloudMaskPolicy.LENIENT
+
+    # SCL 9 (High Prob Cloud), 3 (Shadow), 0 (No data), 1 (Saturated) are ALWAYS masked
+    for policy in [CloudMaskPolicy.STRICT, CloudMaskPolicy.STANDARD, CloudMaskPolicy.LENIENT]:
+        assert SCL_CLOUD_HIGH_PROB in policy
+        assert SCL_CLOUD_SHADOW in policy
+        assert SCL_NO_DATA in policy
+        assert SCL_SATURATED in policy
+
+    # Test processing under STRICT vs STANDARD policy with dark area (SCL 2)
+    nir = np.full((20, 20), 4000, dtype=np.uint16)
+    red = np.full((20, 20), 1000, dtype=np.uint16)
+    scl = np.full((10, 10), SCL_DARK_AREA, dtype=np.uint8)
+
+    # In STRICT mode, all SCL 2 pixels are masked -> insufficient clear pixels
+    res_strict = Sentinel2Processor.process_raster_arrays(
+        red_band=red, nir_band=nir, scl_band=scl, cloud_mask_policy=CloudMaskPolicy.STRICT
+    )
+    assert res_strict["status"] in ["CLOUD_OBSCURED", "INSUFFICIENT_CLEAR_PIXELS"]
+    assert res_strict["valid"] is False
+
+    # In STANDARD mode, SCL 2 pixels are retained -> valid computation
+    res_standard = Sentinel2Processor.process_raster_arrays(
+        red_band=red, nir_band=nir, scl_band=scl, cloud_mask_policy=CloudMaskPolicy.STANDARD
+    )
+    assert res_standard["status"] == "SUCCESS"
+    assert res_standard["valid"] is True
+
+
+def test_sentinel2_configurable_cloud_withholding_thresholds():
+    """Validates configurable max_cloud_cover_fraction and min_valid_pixel_fraction."""
+    nir = np.full((20, 20), 4000, dtype=np.uint16)
+    red = np.full((20, 20), 1000, dtype=np.uint16)
+    
+    # 10x10 SCL: 55% clouded (55 pixels SCL 9, 45 pixels SCL 4)
+    scl = np.full((10, 10), SCL_VEGETATION, dtype=np.uint8)
+    scl.flat[:55] = SCL_CLOUD_HIGH_PROB
+
+    # 1. Under default threshold (0.50), 55% cloud triggers CLOUD_OBSCURED
+    res_default = Sentinel2Processor.process_raster_arrays(
+        red_band=red, nir_band=nir, scl_band=scl, max_cloud_cover_fraction=0.50
+    )
+    assert res_default["status"] == "CLOUD_OBSCURED"
+    assert res_default["valid"] is False
+    assert res_default["cloud_masked_pixel_ratio"] == 0.55
+    assert res_default["max_allowed_cloud_ratio"] == 0.50
+
+    # 2. When max_cloud_cover_fraction is raised to 0.60, observation is accepted
+    res_relaxed = Sentinel2Processor.process_raster_arrays(
+        red_band=red, nir_band=nir, scl_band=scl, max_cloud_cover_fraction=0.60
+    )
+    assert res_relaxed["status"] == "SUCCESS"
+    assert res_relaxed["valid"] is True
+    assert res_relaxed["cloud_masked_pixel_ratio"] == 0.55
+
+    # 3. Test min_valid_pixel_fraction: 85% cloud leaves only 15% valid pixels
+    scl_sparse = np.full((10, 10), SCL_CLOUD_HIGH_PROB, dtype=np.uint8)
+    scl_sparse.flat[:15] = SCL_VEGETATION
+
+    # With max_cloud threshold disabled (1.0), but min_valid_pixel_fraction at 0.20:
+    res_insufficient = Sentinel2Processor.process_raster_arrays(
+        red_band=red,
+        nir_band=nir,
+        scl_band=scl_sparse,
+        max_cloud_cover_fraction=1.0,
+        min_valid_pixel_fraction=0.20
+    )
+    assert res_insufficient["status"] == "INSUFFICIENT_CLEAR_PIXELS"
+    assert res_insufficient["valid"] is False
+    assert res_insufficient["valid_pixel_ratio"] == 0.15
+
+
+def test_sentinel2_zonal_geometry_mask_cloud_fraction():
+    """
+    Validates that cloud obscuration ratio is computed strictly over the plot boundary
+    geometry, preventing scene-wide cloud estimates from biasing parcel decisions.
+    """
+    nir = np.full((20, 20), 4000, dtype=np.uint16)
+    red = np.full((20, 20), 1000, dtype=np.uint16)
+    
+    # 20x20 raster has a 10x10 sub-plot in the top-left corner
+    plot_mask = np.zeros((20, 20), dtype=np.uint8)
+    plot_mask[:10, :10] = 1
+
+    # SCL is 100% cloudy in bottom half, but 100% CLEAR vegetation in top-left plot!
+    scl = np.zeros((10, 10), dtype=np.uint8)
+    # The top-left 5x5 in SCL (which corresponds to top-left 10x10 at 10m) is clear
+    scl[:5, :5] = SCL_VEGETATION
+    scl[5:, :] = SCL_CLOUD_HIGH_PROB
+    scl[:, 5:] = SCL_CLOUD_HIGH_PROB
+
+    res = Sentinel2Processor.process_raster_arrays(
+        red_band=red, nir_band=nir, scl_band=scl, plot_mask=plot_mask
+    )
+    assert res["status"] == "SUCCESS"
+    assert res["valid"] is True
+    # Inside the 10x10 plot geometry, cloud ratio is exactly 0.0 even if scene is 75% cloudy
+    assert res["cloud_masked_pixel_ratio"] == 0.0
+    assert res["valid_pixels"] == 100
+
+
+def test_planetary_computer_sas_token_caching_and_url_signing():
+    """Validates MPC SAS token caching, expiration refresh, and asset URL signing."""
+    import time
+    provider = PlanetaryComputerProvider()
+
+    # Initial state: empty cache
+    assert provider._cached_sas_token is None
+
+    # URL signing when token is None returns unsigned URL unchanged
+    url = "https://sentinel2l2a01.blob.core.windows.net/b04.tif"
+    assert provider.sign_asset_url(url, None) == url
+
+    # Simulating cached token
+    provider._cached_sas_token = "st=2026-03-28&se=2026-03-29&sp=r&sig=test_signature"
+    provider._sas_token_expiry = time.time() + 3600  # valid for 1 hour
+
+    # URL signing with token appends query string
+    signed = provider.sign_asset_url(url, provider._cached_sas_token)
+    assert signed == f"{url}?{provider._cached_sas_token}"
+
+    # Does not double-sign if query string is already present
+    assert provider.sign_asset_url(signed, provider._cached_sas_token) == signed
+
+    # Cached token is returned synchronously when fresh without HTTP request
+    token = asyncio.run(provider.get_sas_token())
+    assert token == provider._cached_sas_token
+
+
+def test_composite_client_distinguishes_empty_results_from_outages():
+    """
+    Validates that a legitimate 0-scene search (e.g. ultra-strict cloud filter)
+    is treated as a successful search (not an outage) and does not spuriously trigger failover.
+    """
+    client = CompositeSatelliteClient()
+
+    # Primary returns 0 scenes successfully
+    primary_empty_result = {
+        "success": True,
+        "provider": "Element 84 Earth Search",
+        "scenes_count": 0,
+        "scenes": [],
+        "attribution": EARTH_SEARCH_ATTRIBUTION,
+        "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER
+    }
+
+    with patch.object(client.primary_provider, "search_scenes", return_value=primary_empty_result):
+        res = asyncio.run(client.search_scenes(bbox=TELANGANA_BBOX))
+        assert res["success"] is True
+        assert res["scenes_count"] == 0
+        assert res["failover_engaged"] is False
+        assert res["provider"] == "Element 84 Earth Search"
+
+    # Primary fails with 503 -> Failover IS engaged
+    primary_error = {
+        "success": False,
+        "error_code": "HTTP_503",
+        "message": "Gateway Timeout"
+    }
+    secondary_fallback_result = {
+        "success": True,
+        "provider": "Microsoft Planetary Computer",
+        "scenes_count": 1,
+        "scenes": [{"id": "S2B_TEST"}],
+        "attribution": PLANETARY_COMPUTER_ATTRIBUTION,
+        "disclaimer": SATELLITE_EVIDENCE_DISCLAIMER
+    }
+
+    with patch.object(client.primary_provider, "search_scenes", return_value=primary_error):
+        with patch.object(client.secondary_provider, "search_scenes", return_value=secondary_fallback_result):
+            res = asyncio.run(client.search_scenes(bbox=TELANGANA_BBOX))
+            assert res["success"] is True
+            assert res["failover_engaged"] is True
+            assert res["provider"] == "Microsoft Planetary Computer"
+
+
+def test_fetch_cog_tile_error_handling():
+    """Validates fetch_cog_tile raises RuntimeError on non-200/206 HTTP responses."""
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_get.return_value = mock_response
+
+        with pytest.raises(RuntimeError, match="HTTP 404"):
+            asyncio.run(Sentinel2Processor.fetch_cog_tile("https://example.com/invalid_tile.tif"))
+

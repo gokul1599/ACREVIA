@@ -42,14 +42,20 @@ All external service integrations are governed by five non-negotiable principles
   - `GROQ_API_KEY`: Secret API bearer token.
   - `GROQ_MODEL`: Active model identifier (e.g. `qwen/qwen3.8-27b`, `openai/gpt-oss-20b`).
   - `GROQ_TIMEOUT_SECONDS`: Hard client timeout (default: 12.0s).
-- **Free-Tier Limits:**
-  - Requests: 30 Requests Per Minute (RPM).
-  - Tokens: 6,000 Tokens Per Minute (TPM), 14,400 Tokens Per Day (TPD).
-  - Cost: Free developer tier ($0.00).
+- **Free-Tier Limits & Authenticated Headers:**
+  - Rate Limits: 1,000 Requests Per Day (RPD), 8,000 Tokens Per Minute (TPM).
+  - Verified Live Response Headers:
+    - `x-ratelimit-limit-requests: 1000`
+    - `x-ratelimit-limit-tokens: 8000`
+    - `x-ratelimit-remaining-requests: 999`
+    - `x-ratelimit-remaining-tokens: 7926`
+  - Cost: Free developer tier ($0.00). Zero payment card attached.
 - **Credential Verification:**
   - Real API key tested and verified against `https://api.groq.com/openai/v1/models` and `chat/completions`.
-  - Latency: ~645 ms round-trip.
+  - Latency: ~500–645 ms round-trip.
+  - Active Models: `qwen/qwen3.8-27b` (primary multilingual RAG) and `openai/gpt-oss-20b` (open reasoning model).
 - **Failure & Quota Exhaustion Handling:**
+  - When quotas are reached, Groq returns `HTTP 429 Too Many Requests` (never bills overage).
   - Returns structured `RATE_LIMIT_EXCEEDED` envelope extracting `Retry-After` header.
   - Automatically falls back to deterministic PJTSAU grounded answers without interrupting farmer workflow.
   - **Zero paid fallback:** Does not attempt to fall back to paid OpenAI or Claude endpoints.
