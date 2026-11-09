@@ -20,7 +20,7 @@ interface SustainablePracticesCardProps {
 
 export const SustainablePracticesCard: React.FC<SustainablePracticesCardProps> = ({
   scorecard,
-  practices,
+  practices: _practices,
   labels,
 }) => {
   return (

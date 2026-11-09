@@ -10,8 +10,6 @@ import { Locale } from "@/messages";
 import {
   Sprout,
   CheckCircle2,
-  MapPin,
-  Layers,
   ArrowRight,
   ArrowLeft,
   AlertCircle,
@@ -33,7 +31,7 @@ export default function OnboardingPage() {
   const [village, setVillage] = useState("Dharmaram");
   const [acreage, setAcreage] = useState<number>(3.0);
 
-  const [plotName, setPlotName] = useState("Plot 1 (North Field)");
+  const [plotName, _setPlotName] = useState("Plot 1 (North Field)");
   const [soilType, setSoilType] = useState<"BLACK_COTTON" | "RED_CHALKA" | "ALLUVIAL" | "LOAMY">("BLACK_COTTON");
   const [irrigation, setIrrigation] = useState<"BOREWELL" | "CANAL" | "RAINFED" | "DRIP" | "WELL">("BOREWELL");
 

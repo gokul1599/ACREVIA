@@ -10,16 +10,13 @@ import { Farm, Diagnosis, CropSeason } from "@/lib/api/types";
 import { Button } from "@/components/ui/Button";
 import {
   Camera,
-  Upload,
   AlertTriangle,
   CheckCircle2,
   RefreshCw,
   Info,
-  HelpCircle,
   ShieldAlert,
   BotMessageSquare,
   UserCheck,
-  ArrowRight,
 } from "lucide-react";
 
 function DiagnosisContent() {
@@ -28,7 +25,7 @@ function DiagnosisContent() {
   const { t, locale } = useTranslation();
   const isOnline = useOnlineStatus();
 
-  const [farms, setFarms] = useState<Farm[]>([]);
+  const [_farms, setFarms] = useState<Farm[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>("");
   const [cropType, setCropType] = useState<"cotton" | "rice" | "chilli">("cotton");
   const [selectedSeason, setSelectedSeason] = useState<CropSeason | null>(null);

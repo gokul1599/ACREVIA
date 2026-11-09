@@ -30,13 +30,12 @@ def upgrade() -> None:
     for table_name, meta in TABLE_CLASSIFICATION.items():
         category = meta.get("category")
         col = meta.get("column", "farm_id")
-        if category in (TableCategory.TENANT_DIRECT, TableCategory.USER_OWNED, TableCategory.SHARED_REFERENCE):
-            ddl = generate_rls_ddl(table_name, category, col)
-            if ddl.strip():
-                for stmt in ddl.strip().split(";"):
-                    cleaned = stmt.strip()
-                    if cleaned:
-                        op.execute(sa.text(cleaned))
+        ddl = generate_rls_ddl(table_name, category, col)
+        if ddl.strip():
+            for stmt in ddl.strip().split(";"):
+                cleaned = stmt.strip()
+                if cleaned:
+                    op.execute(sa.text(cleaned))
 
 
 def downgrade() -> None:
@@ -47,6 +46,6 @@ def downgrade() -> None:
     print("[RLS Migration] Disabling PostgreSQL Row-Level Security across classified tables...")
     for table_name, meta in TABLE_CLASSIFICATION.items():
         category = meta.get("category")
-        if category in (TableCategory.TENANT_DIRECT, TableCategory.USER_OWNED, TableCategory.SHARED_REFERENCE):
+        if category in (TableCategory.TENANT_DIRECT, TableCategory.USER_OWNED, TableCategory.TENANT_INDIRECT, TableCategory.COMMUNITY_COLLABORATIVE):
             op.execute(sa.text(f"ALTER TABLE {table_name} NO FORCE ROW LEVEL SECURITY;"))
-            op.execute(sa.text(f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;"))
+        op.execute(sa.text(f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;"))

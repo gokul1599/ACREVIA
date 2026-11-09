@@ -185,7 +185,10 @@ class GroqClient:
                                 }
                             }
                         elif resp.status_code in (404, 429, 500, 502, 503, 504):
-                            retry_after_hdr = resp.headers.get("retry-after", "30")
+                            headers_obj = getattr(resp, "headers", None)
+                            retry_after_hdr = "30"
+                            if headers_obj is not None and hasattr(headers_obj, "get"):
+                                retry_after_hdr = str(headers_obj.get("retry-after", "30") or "30")
                             retry_after_int = int(retry_after_hdr) if retry_after_hdr.isdigit() else 30
                             logger.warning(
                                 f"Groq candidate model '{candidate_model}' returned HTTP {resp.status_code}. "

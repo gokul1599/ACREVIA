@@ -43,7 +43,7 @@ export const FarmLedgerCard: React.FC<FarmLedgerCardProps> = ({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState<number | "">("");
   const [txDate, setTxDate] = useState(new Date().toISOString().split("T")[0]);
-  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [paymentMethod, _setPaymentMethod] = useState("UPI");
   const [vendorName, setVendorName] = useState("");
 
   const [correctingExpenseId, setCorrectingExpenseId] = useState<string | null>(null);

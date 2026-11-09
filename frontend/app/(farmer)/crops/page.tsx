@@ -9,9 +9,6 @@ import {
   Layers,
   Sprout,
   Plus,
-  Calendar,
-  CheckCircle2,
-  Droplets,
   MapPin,
 } from "lucide-react";
 
@@ -86,7 +83,7 @@ export default function CropsPage() {
     }
   };
 
-  const selectedFarm = farms.find((f) => f.id === selectedFarmId);
+  const _selectedFarm = farms.find((f) => f.id === selectedFarmId);
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-6">

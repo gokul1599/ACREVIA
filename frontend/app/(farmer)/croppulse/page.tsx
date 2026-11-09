@@ -3,25 +3,20 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "@/lib/localization/context";
 import { api } from "@/lib/api/client";
-import { Farm, Observation, CropSeason } from "@/lib/api/types";
+import { Farm, Observation } from "@/lib/api/types";
 import { Button } from "@/components/ui/Button";
 import {
   Activity,
   Camera,
   Calendar,
-  AlertCircle,
   Plus,
-  RefreshCw,
   Info,
-  Clock,
-  Sparkles,
-  ArrowRight,
 } from "lucide-react";
 
 export default function CropPulsePage() {
   const { t } = useTranslation();
 
-  const [farms, setFarms] = useState<Farm[]>([]);
+  const [_farms, setFarms] = useState<Farm[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string>("");
   const [observations, setObservations] = useState<Observation[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);

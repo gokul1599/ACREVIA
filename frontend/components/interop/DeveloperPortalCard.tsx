@@ -32,7 +32,7 @@ export const DeveloperPortalCard: React.FC<DeveloperPortalCardProps> = ({
 }) => {
   const [appName, setAppName] = useState("");
   const [isSandbox, setIsSandbox] = useState(true);
-  const [selectedAppId, setSelectedAppId] = useState<string>(applications[0]?.id || "");
+  const [_selectedAppId, _setSelectedAppId] = useState<string>(applications[0]?.id || "");
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-sky-100 p-5 space-y-4">

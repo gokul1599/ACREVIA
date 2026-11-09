@@ -125,7 +125,7 @@ export class OfflineDB {
       return this.dbInstance;
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onupgradeneeded = (event) => {

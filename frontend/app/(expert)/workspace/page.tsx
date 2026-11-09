@@ -6,7 +6,6 @@ import { api } from "@/lib/api/client";
 import type {
   ExpertCaseItem,
   ExpertCaseDossier,
-  ExpertAssessment,
   ExpertAssessmentRevision,
 } from "@/lib/api/types";
 import { en } from "@/messages/en";

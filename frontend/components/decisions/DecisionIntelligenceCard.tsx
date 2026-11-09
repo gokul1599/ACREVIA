@@ -26,8 +26,8 @@ export const DecisionIntelligenceCard: React.FC<DecisionIntelligenceCardProps> =
   labels,
 }) => {
   const [actionTaken, setActionTaken] = useState<string>("ADOPTED");
-  const [rating, setRating] = useState<number>(5);
-  const [feedbackNotes, setFeedbackNotes] = useState<string>("");
+  const [rating, _setRating] = useState<number>(5);
+  const [feedbackNotes, _setFeedbackNotes] = useState<string>("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 

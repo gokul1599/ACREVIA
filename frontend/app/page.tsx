@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Globe,
   ArrowRight,
-  Activity,
 } from "lucide-react";
 
 export default function HomePage() {

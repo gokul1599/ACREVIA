@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/Button";
 import {
   User,
   Phone,
-  Globe,
   Wifi,
   WifiOff,
   RefreshCw,

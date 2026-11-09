@@ -29,7 +29,6 @@ import type {
   FusionExplanation,
   HarvestMeasurement,
   YieldForecastResponse,
-  KnowledgeEntity,
   KnowledgeTraversalResponse,
   FarmTwin,
   TwinSnapshotSummary,
@@ -42,7 +41,6 @@ import type {
   DecisionRecord,
   DecisionFeedback,
   FarmExpense,
-  FinancialCorrection,
   SaleTransaction,
   MarketPriceObservation,
   MarketCompareResponse,
@@ -61,12 +59,10 @@ import type {
   CommunityComment,
   KnowledgeContribution,
   AgriculturalOrganization,
-  CollectiveActivity,
   CollectiveAggregateAnalytics,
   ResearchProject,
   ResearchConsent,
   LearningResource,
-  TrainingEvent,
   RegionalSignal,
 } from "./types.ts";
 

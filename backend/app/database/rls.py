@@ -296,4 +296,67 @@ CREATE POLICY {table_name}_admin_write_policy ON {table_name}
     USING (current_setting('app.is_admin', true) = 'true')
     WITH CHECK (current_setting('app.is_admin', true) = 'true');
 """
+    elif category == TableCategory.TENANT_INDIRECT:
+        parent = TABLE_CLASSIFICATION.get(table_name, {}).get("parent_table", "plots")
+        fk = TABLE_CLASSIFICATION.get(table_name, {}).get("fk", "plot_id")
+        return f"""
+-- Table: {table_name} (Indirect Tenant Child Table linked to {parent})
+ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_child_isolation_policy ON {table_name};
+CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
+    AS RESTRICTIVE
+    FOR ALL
+    TO PUBLIC
+    USING (
+        current_setting('app.is_admin', true) = 'true'
+        OR EXISTS (
+            SELECT 1 FROM {parent}
+            WHERE {parent}.id = {table_name}.{fk}
+            AND (
+                {parent}.id::text = current_setting('app.current_tenant_id', true)
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = '{parent}' AND column_name = 'farm_id'
+                    )
+                )
+            )
+        )
+    )
+    WITH CHECK (
+        current_setting('app.is_admin', true) = 'true'
+        OR EXISTS (
+            SELECT 1 FROM {parent}
+            WHERE {parent}.id = {table_name}.{fk}
+        )
+    );
+"""
+    elif category == TableCategory.COMMUNITY_COLLABORATIVE:
+        return f"""
+-- Table: {table_name} (Community & Collaborative Hub - Shared Read, Author Write)
+ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_public_read_policy ON {table_name};
+CREATE POLICY {table_name}_public_read_policy ON {table_name}
+    AS PERMISSIVE
+    FOR SELECT
+    TO PUBLIC
+    USING (true);
+
+DROP POLICY IF EXISTS {table_name}_author_write_policy ON {table_name};
+CREATE POLICY {table_name}_author_write_policy ON {table_name}
+    AS RESTRICTIVE
+    FOR ALL
+    TO PUBLIC
+    USING (
+        current_setting('app.is_admin', true) = 'true'
+        OR current_setting('app.current_user_id', true) != ''
+    )
+    WITH CHECK (
+        current_setting('app.is_admin', true) = 'true'
+        OR current_setting('app.current_user_id', true) != ''
+    );
+"""
     return ""
