@@ -53,18 +53,29 @@ def get_staging_branch_specification() -> Dict[str, Any]:
             "bypass_rls": False,
             "can_create_db": False,
             "can_create_role": False,
+            "admin_role_membership": False,
+        },
+        "admin_role": "acrevia_admin",  # Dedicated role for verified administrative bypass
+        "admin_role_privileges": {
+            "is_superuser": False,
+            "bypass_rls": False,
+            "can_create_db": False,
+            "can_create_role": False,
         },
         "migration_role": "neondb_owner",  # Used strictly for applying DDL migrations
         "safety_guarantees": [
             "Complete physical isolation from production data",
             "Zero real farmer data, names, or GPS coordinates",
             "Synthetic agronomic test profiles only",
-            "Runtime role cannot bypass RLS policies",
+            "Runtime role (acrevia_staging_app) cannot bypass RLS policies",
+            "Runtime role cannot self-escalate via app.is_admin GUC parameter",
+            "Administrative bypass strictly restricted to verified administrative role identities",
             "Automatic branch deletion schedule upon verification completion"
         ],
         "neon_cli_commands": [
             "neon branches create --name staging-rls-phase05",
             "neon roles create --branch staging-rls-phase05 --name acrevia_staging_app",
+            "neon roles create --branch staging-rls-phase05 --name acrevia_admin",
             "neon connection-string --branch staging-rls-phase05 --role acrevia_staging_app"
         ],
         "authorization_gate": "OWNER_APPROVAL_REQUIRED_GATE_STAGING_NEON"

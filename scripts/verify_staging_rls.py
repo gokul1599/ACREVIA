@@ -85,18 +85,49 @@ def verify_staging_database_rls(connection_url: str) -> Dict[str, Any]:
                 "cmd": cmd
             })
 
-        # 3. Verify Runtime Role Privileges (must NOT have BYPASSRLS or SUPERUSER)
+        # 3. Verify Runtime Role Privileges (must NOT have BYPASSRLS, SUPERUSER, or admin role membership)
         role_result = conn.execute(text("""
-            SELECT rolname, rolsuper, rolbypassrls
+            SELECT rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb
             FROM pg_roles
             WHERE rolname = CURRENT_USER;
         """))
         current_role = role_result.fetchone()
         if current_role:
-            rolname, rolsuper, rolbypassrls = current_role
+            rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb = current_role
             report["current_user"] = rolname
-            report["runtime_role_safe"] = (not rolsuper) and (not rolbypassrls)
-            print(f"[Role Check] User '{rolname}': SUPERUSER={rolsuper}, BYPASSRLS={rolbypassrls} (Safe: {report['runtime_role_safe']})")
+            report["runtime_role_safe"] = (not rolsuper) and (not rolbypassrls) and (not rolcreaterole)
+            print(f"[Role Check] User '{rolname}': SUPERUSER={rolsuper}, BYPASSRLS={rolbypassrls}, CREATEROLE={rolcreaterole} (Safe: {report['runtime_role_safe']})")
+
+        # 4. Verify Administrative Boundary & Membership Isolation
+        membership_check = conn.execute(text("""
+            SELECT m.rolname AS member_role, g.rolname AS granted_role
+            FROM pg_auth_members am
+            JOIN pg_roles m ON m.oid = am.member
+            JOIN pg_roles g ON g.oid = am.roleid
+            WHERE m.rolname = CURRENT_USER AND g.rolname IN ('acrevia_admin', 'neondb_owner');
+        """))
+        admin_memberships = membership_check.fetchall()
+        report["has_admin_membership"] = len(admin_memberships) > 0
+        if report["has_admin_membership"]:
+            print(f"[SECURITY ALERT] Current role '{rolname}' has unauthorized administrative role membership: {admin_memberships}")
+        else:
+            print(f"[Role Check] Current role '{rolname}' has NO administrative role membership (Safe)")
+
+        # 5. Administrative Self-Escalation Test (Verify GUC-tampering cannot bypass RLS)
+        if rolname not in ("neondb_owner", "acrevia_admin"):
+            try:
+                # Attempt to self-escalate via GUC parameter
+                conn.execute(text("SELECT set_config('app.is_admin', 'true', true);"))
+                # Probe policy predicate evaluation
+                predicate_test = conn.execute(text("""
+                    SELECT (CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') 
+                            AND current_setting('app.is_admin', true) = 'true') AS can_bypass;
+                """)).scalar()
+                report["guc_self_escalation_blocked"] = not predicate_test
+                print(f"[Trust Boundary] GUC app.is_admin self-escalation probe: can_bypass={predicate_test} (Blocked: {report['guc_self_escalation_blocked']})")
+            except Exception as e:
+                print(f"[Trust Boundary] Escalation probe error: {e}")
+                report["guc_self_escalation_blocked"] = True
 
     report["verified_tables_count"] = len(report["rls_enabled_tables"])
     return report

@@ -13,6 +13,16 @@ from sqlalchemy import event
 from backend.app.core.logging import logger
 
 
+# PostgreSQL administrative role whitelist for RLS bypass.
+# Unprivileged runtime roles (e.g. acrevia_staging_app) cannot self-escalate by simply
+# executing `SELECT set_config('app.is_admin', 'true', true)`.
+ADMIN_ROLES = ("neondb_owner", "acrevia_admin")
+ADMIN_BYPASS_SQL = (
+    "(CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') "
+    "AND current_setting('app.is_admin', true) = 'true')"
+)
+
+
 class TableCategory(str, Enum):
     TENANT_DIRECT = "tenant_direct"          # Direct farm_id or tenant_id column
     TENANT_INDIRECT = "tenant_indirect"      # Child of plot, season, farm, or observation
@@ -261,11 +271,11 @@ CREATE POLICY {table_name}_tenant_isolation_policy ON {table_name}
     FOR ALL
     TO PUBLIC
     USING (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR {column_name}::text = current_setting('app.current_tenant_id', true)
     )
     WITH CHECK (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR {column_name}::text = current_setting('app.current_tenant_id', true)
     );
 """
@@ -289,11 +299,11 @@ CREATE POLICY {table_name}_user_isolation_policy ON {table_name}
     FOR ALL
     TO PUBLIC
     USING (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR {column_name}::text = current_setting('app.current_user_id', true)
     )
     WITH CHECK (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR {column_name}::text = current_setting('app.current_user_id', true)
     );
 """
@@ -314,8 +324,8 @@ CREATE POLICY {table_name}_admin_write_policy ON {table_name}
     AS RESTRICTIVE
     FOR ALL
     TO PUBLIC
-    USING (current_setting('app.is_admin', true) = 'true')
-    WITH CHECK (current_setting('app.is_admin', true) = 'true');
+    USING ({ADMIN_BYPASS_SQL})
+    WITH CHECK ({ADMIN_BYPASS_SQL});
 """
     elif category == TableCategory.TENANT_INDIRECT:
         parent = TABLE_CLASSIFICATION.get(table_name, {}).get("parent_table", "plots")
@@ -339,7 +349,7 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
     FOR ALL
     TO PUBLIC
     USING (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR EXISTS (
             SELECT 1 FROM {parent}
             WHERE {parent}.id = {table_name}.{fk}
@@ -363,7 +373,7 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
         )
     )
     WITH CHECK (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR EXISTS (
             SELECT 1 FROM {parent}
             WHERE {parent}.id = {table_name}.{fk}
@@ -405,11 +415,11 @@ CREATE POLICY {table_name}_author_write_policy ON {table_name}
     FOR ALL
     TO PUBLIC
     USING (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR current_setting('app.current_user_id', true) != ''
     )
     WITH CHECK (
-        current_setting('app.is_admin', true) = 'true'
+        {ADMIN_BYPASS_SQL}
         OR current_setting('app.current_user_id', true) != ''
     );
 """

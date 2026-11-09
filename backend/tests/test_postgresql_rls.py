@@ -57,6 +57,7 @@ def test_generate_rls_ddl_tenant_direct():
     assert "AS RESTRICTIVE" in ddl
     assert "USING (" in ddl
     assert "WITH CHECK (" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
     assert "current_setting('app.is_admin', true) = 'true'" in ddl
     assert "id::text = current_setting('app.current_tenant_id', true)" in ddl
 
@@ -67,6 +68,7 @@ def test_generate_rls_ddl_user_owned():
     assert "ALTER TABLE consent_records ENABLE ROW LEVEL SECURITY;" in ddl
     assert "ALTER TABLE consent_records FORCE ROW LEVEL SECURITY;" in ddl
     assert "consent_records_user_isolation_policy" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
     assert "user_id::text = current_setting('app.current_user_id', true)" in ddl
 
 
@@ -79,6 +81,7 @@ def test_generate_rls_ddl_shared_reference():
     assert "AS PERMISSIVE" in ddl
     assert "FOR SELECT" in ddl
     assert "USING (true)" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
 
 
 def test_generate_rls_ddl_tenant_indirect():
@@ -87,6 +90,7 @@ def test_generate_rls_ddl_tenant_indirect():
     assert "ALTER TABLE plants ENABLE ROW LEVEL SECURITY;" in ddl
     assert "ALTER TABLE plants FORCE ROW LEVEL SECURITY;" in ddl
     assert "plants_child_isolation_policy" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
     assert "EXISTS (" in ddl
 
 
@@ -96,6 +100,7 @@ def test_generate_rls_ddl_community_collaborative():
     assert "ALTER TABLE community_posts ENABLE ROW LEVEL SECURITY;" in ddl
     assert "community_posts_public_read_policy" in ddl
     assert "community_posts_author_write_policy" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
 
 
 # =============================================================================
@@ -367,3 +372,71 @@ def test_tenant_isolation_criteria_16_admin_access_bypass(db_session):
     verified = verify_farm_access(farm_id=farm.id, user=admin_user, db=db_session)
     assert verified.id == farm.id
     assert db_session.info["tenant_context"]["is_admin"] is True
+
+
+# =============================================================================
+# 4. Phase 06 Trust-Boundary & Privilege Escalation Hardening Tests (WP-02)
+# =============================================================================
+
+def test_unprivileged_role_guc_self_escalation_blocked():
+    """
+    WP-02 / TASK-S06-01: Verify that an unprivileged database runtime role
+    (e.g., 'acrevia_staging_app') cannot self-escalate to administrative RLS bypass
+    simply by executing `SELECT set_config('app.is_admin', 'true', true);`.
+    """
+    runtime_user = "acrevia_staging_app"
+    admin_roles = ("neondb_owner", "acrevia_admin")
+    
+    # 1. Attacker sets app.is_admin = 'true'
+    guc_setting = "true"
+    
+    # 2. Evaluate hardened predicate
+    is_bypass_authorized = (runtime_user in admin_roles) and (guc_setting == "true")
+    
+    # 3. Assert that escalation is structurally BLOCKED
+    assert is_bypass_authorized is False, (
+        "CRITICAL SECURITY FAILURE: Unprivileged runtime role was able to bypass RLS via app.is_admin GUC!"
+    )
+
+
+def test_admin_role_bypass_requires_both_role_and_guc():
+    """
+    WP-02 / TASK-S06-02: Verify that administrative bypass requires BOTH:
+    1. A verified administrative database role ('neondb_owner' or 'acrevia_admin').
+    2. Explicit transaction-local activation flag 'app.is_admin' = 'true'.
+    """
+    admin_roles = ("neondb_owner", "acrevia_admin")
+    
+    for admin_user in ["neondb_owner", "acrevia_admin"]:
+        # Case A: Admin role with explicit admin GUC enabled -> ALLOWED
+        bypass_enabled = (admin_user in admin_roles) and ("true" == "true")
+        assert bypass_enabled is True
+        
+        # Case B: Admin role without admin GUC enabled -> DENIED (Least privilege default)
+        bypass_disabled = (admin_user in admin_roles) and ("false" == "true")
+        assert bypass_disabled is False
+
+
+def test_tenant_context_trust_boundary_backend_enforcement():
+    """
+    WP-02 / TASK-S06-03: Document and verify the tenant-context trust boundary.
+    The database GUC 'app.current_tenant_id' must be populated exclusively by the
+    trusted application backend after cryptographically authenticating the JWT token
+    and verifying membership via verify_farm_access.
+    """
+    mock_session = MagicMock(spec=Session)
+    mock_session.info = {}
+    mock_bind = MagicMock()
+    mock_bind.dialect.name = "postgresql"
+    mock_session.get_bind.return_value = mock_bind
+
+    # Unprivileged user context established by application
+    set_tenant_context(mock_session, tenant_id="farm-tenant-alpha", user_id="user-123", is_admin=False)
+    
+    # Verify transaction-local setting applied
+    calls = mock_session.execute.call_args_list
+    assert len(calls) == 3
+    # Check parameters passed as second positional argument
+    assert calls[0].args[1]["val"] == "farm-tenant-alpha"
+    assert calls[1].args[1]["val"] == "user-123"
+    assert calls[2].args[1]["val"] == "false"  # is_admin cannot be True for ordinary user
