@@ -20,24 +20,35 @@ from backend.app.core.rate_limit import rate_limit
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit(max_requests=30, window_seconds=60))])
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(max_requests=5, window_seconds=60, endpoint_group="auth_register", fail_mode="fail_closed"))]
+)
 def register(
     data: UserRegisterRequest,
     db: Session = Depends(get_db)
 ):
     """
     Registers a new user account with secure password hashing.
+    Enforces fail-closed rate limiting to prevent automated enumeration.
     """
     return AuthService.register_user(db=db, req=data)
 
 
-@router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit(max_requests=30, window_seconds=60))])
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit(max_requests=5, window_seconds=60, endpoint_group="auth_login", fail_mode="fail_closed"))]
+)
 def login(
     data: UserLoginRequest,
     db: Session = Depends(get_db)
 ):
     """
     Authenticates user credentials and returns JWT bearer tokens.
+    Enforces fail-closed rate limiting to prevent brute-force attacks.
     """
     return AuthService.authenticate_user(db=db, req=data)
 

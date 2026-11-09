@@ -12,6 +12,7 @@ from backend.app.core.config import settings
 from backend.app.core.security import decode_access_token
 from backend.app.core.exceptions import AuthenticationException, AuthorizationException
 from backend.app.database.session import get_db
+from backend.app.database.rls import set_tenant_context
 from backend.app.models.user import User
 from backend.app.models.farm import Farm, FarmMembership
 from backend.app.security.permissions import SystemRole, FarmRole
@@ -55,6 +56,11 @@ def get_current_user(
             detail="User account is inactive or does not exist.",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+    # Set user context in database session for RLS / audit isolation
+    user_roles = [r.id for r in user.roles]
+    is_admin = SystemRole.ADMIN.value in user_roles
+    set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=is_admin)
 
     return user
 
@@ -101,10 +107,12 @@ def verify_farm_access(
 
     # 1. Superuser override
     if SystemRole.ADMIN.value in user_roles:
+        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=True)
         return farm
 
     # 2. Primary Farm Owner
     if farm.owner_id == user.id:
+        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
         return farm
 
     # 3. Active Farm Membership
@@ -120,11 +128,13 @@ def verify_farm_access(
     if membership:
         if allowed_farm_roles:
             if membership.role_in_farm in allowed_farm_roles:
+                set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
                 return farm
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Action requires one of farm roles: {allowed_farm_roles}, but user has '{membership.role_in_farm}'."
             )
+        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
         return farm
 
     # 4. Cross-Farm Access Denied

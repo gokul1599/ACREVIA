@@ -5,7 +5,7 @@ Stage 08 Remediation (TASK-S08-02).
 
 import time
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, Depends, Request
 from fastapi.testclient import TestClient
 
@@ -115,6 +115,7 @@ def test_fail_closed_mode_on_unreachable_redis():
     result = backend.check_rate_limit("auth:login:u1", max_requests=5, window_seconds=60, fail_mode="fail_closed")
     assert result.allowed is False
     assert result.retry_after == 60
+    assert result.service_unavailable is True
 
 
 def test_fail_open_mode_on_unreachable_redis():
@@ -124,6 +125,131 @@ def test_fail_open_mode_on_unreachable_redis():
     result = backend.check_rate_limit("public:general:ip1", max_requests=10, window_seconds=60, fail_mode="fail_open")
     assert result.allowed is True
     assert result.remaining == 9
+    assert result.service_unavailable is False
+
+
+def test_fail_closed_redis_timeout_handling():
+    """Verifies that Redis timeout in pipeline triggers fail_closed with service_unavailable=True."""
+    backend = RedisRateLimiterBackend("redis://localhost:6379")
+    mock_client = MagicMock()
+    mock_client.pipeline.side_effect = TimeoutError("Redis socket timeout")
+    backend._client = mock_client
+
+    result = backend.check_rate_limit("auth:login:u2", max_requests=5, window_seconds=60, fail_mode="fail_closed")
+    assert result.allowed is False
+    assert result.service_unavailable is True
+    assert result.retry_after == 60
+
+
+def test_fail_closed_redis_auth_failure_handling():
+    """Verifies that Redis authentication failure triggers fail_closed with service_unavailable=True."""
+    backend = RedisRateLimiterBackend("redis://localhost:6379")
+    mock_client = MagicMock()
+    mock_client.pipeline.side_effect = Exception("WRONGPASS invalid username-password pair")
+    backend._client = mock_client
+
+    result = backend.check_rate_limit("auth:login:u3", max_requests=5, window_seconds=60, fail_mode="fail_closed")
+    assert result.allowed is False
+    assert result.service_unavailable is True
+    assert result.retry_after == 60
+
+
+def test_fail_closed_redis_tls_failure_handling():
+    """Verifies that Redis TLS/SSL failure triggers fail_closed with service_unavailable=True."""
+    import ssl
+    backend = RedisRateLimiterBackend("rediss://localhost:6379")
+    mock_client = MagicMock()
+    mock_client.pipeline.side_effect = ssl.SSLError("SSL handshake failed")
+    backend._client = mock_client
+
+    result = backend.check_rate_limit("auth:login:u4", max_requests=5, window_seconds=60, fail_mode="fail_closed")
+    assert result.allowed is False
+    assert result.service_unavailable is True
+    assert result.retry_after == 60
+
+
+def test_redis_recovery_after_outage():
+    """Verifies that once an outage clears, subsequent calls succeed."""
+    backend = RedisRateLimiterBackend("redis://localhost:6379")
+    # First: simulate outage
+    backend._client = None
+    with patch.object(backend, "_get_client", return_value=None):
+        res1 = backend.check_rate_limit("auth:login:u5", max_requests=5, window_seconds=60, fail_mode="fail_closed")
+        assert res1.allowed is False
+        assert res1.service_unavailable is True
+
+    # Second: simulate recovery
+    mock_healthy_client = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.execute.return_value = [True, 0, True, True]
+    mock_healthy_client.pipeline.return_value = mock_pipe
+
+    with patch.object(backend, "_get_client", return_value=mock_healthy_client):
+        res2 = backend.check_rate_limit("auth:login:u5", max_requests=5, window_seconds=60, fail_mode="fail_closed")
+        assert res2.allowed is True
+        assert res2.service_unavailable is False
+        assert res2.remaining == 4
+
+
+def test_fail_closed_http_503_and_no_secret_leakage():
+    """Verifies that fail_closed returns HTTP 503 without leaking credentials or stack traces."""
+    from backend.app.core.exceptions import ServiceUnavailableException
+    test_app = FastAPI()
+
+    @test_app.exception_handler(ServiceUnavailableException)
+    async def service_unavailable_handler(request: Request, exc: ServiceUnavailableException):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"detail": exc.message, "error_type": "ServiceUnavailableException"},
+            headers={"Retry-After": "60"},
+        )
+
+    # Broken Redis backend with credentials in URL
+    unreachable_backend = RedisRateLimiterBackend(
+        "rediss://default:supersecretpassword123@fake-cluster.upstash.io:6379",
+        connection_timeout_seconds=0.05
+    )
+    unreachable_backend._client = None
+    with patch.object(unreachable_backend, "_get_client", return_value=None):
+        from backend.app.core.rate_limit import rate_limiter
+        old_backend = rate_limiter.backend
+        try:
+            rate_limiter.set_backend(unreachable_backend)
+
+            @test_app.post("/auth/sensitive-login", dependencies=[Depends(rate_limit(max_requests=5, window_seconds=60, endpoint_group="auth_login", fail_mode="fail_closed"))])
+            def sensitive_login():
+                return {"token": "should_never_reach_here"}
+
+            client = TestClient(test_app)
+            resp = client.post("/auth/sensitive-login")
+
+            assert resp.status_code == 503
+            assert "Retry-After" in resp.headers
+            resp_text = resp.text
+            # Absolute secret protection verification:
+            assert "supersecretpassword123" not in resp_text
+            assert "fake-cluster.upstash.io" not in resp_text
+            assert "rediss://" not in resp_text
+            assert "RateLimiter" in resp_text or "unavailable" in resp_text.lower()
+        finally:
+            rate_limiter.set_backend(old_backend)
+
+
+def test_health_endpoint_remains_accessible_during_redis_outage(client: TestClient):
+    """Verifies that infrastructure health checks (/health) do not fail when Redis rate limiter is down."""
+    from backend.app.core.rate_limit import rate_limiter
+    old_backend = rate_limiter.backend
+    try:
+        broken_backend = RedisRateLimiterBackend("redis://broken:6379")
+        broken_backend._client = None
+        with patch.object(broken_backend, "_get_client", return_value=None):
+            rate_limiter.set_backend(broken_backend)
+            resp = client.get("/health")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "HEALTHY"
+    finally:
+        rate_limiter.set_backend(old_backend)
 
 
 def test_rate_limit_fastapi_dependency():

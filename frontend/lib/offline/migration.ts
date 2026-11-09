@@ -57,7 +57,7 @@ export class StorageMigration {
       created_at?: string;
       sync_status?: "PENDING" | "SYNCING" | "FAILED";
       error_message?: string;
-    }> = [];
+    }>;
 
     try {
       parsedDrafts = JSON.parse(rawData);

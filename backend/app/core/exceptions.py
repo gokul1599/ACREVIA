@@ -7,11 +7,18 @@ from typing import Optional, Dict, Any
 
 class AcreviaException(Exception):
     """Base exception for all ACREVIA domain errors."""
-    def __init__(self, message: str, status_code: int = 500, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 500,
+        details: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None
+    ):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+        self.headers = headers or {}
 
 
 class EntityNotFoundException(AcreviaException):
@@ -50,12 +57,14 @@ class ValidationException(AcreviaException):
 
 
 class ServiceUnavailableException(AcreviaException):
-    def __init__(self, service_name: str, message: str = "Service is currently unavailable."):
+    def __init__(self, service_name: str, message: str = "Service is currently unavailable.", retry_after: int = 30):
         super().__init__(
             message=f"{service_name}: {message}",
             status_code=503,
-            details={"service": service_name}
+            details={"service": service_name, "retry_after_seconds": retry_after},
+            headers={"Retry-After": str(retry_after)}
         )
+        self.retry_after = retry_after
 
 
 class RateLimitExceededException(AcreviaException):
@@ -63,7 +72,8 @@ class RateLimitExceededException(AcreviaException):
         super().__init__(
             message=message,
             status_code=429,
-            details={"retry_after_seconds": retry_after}
+            details={"retry_after_seconds": retry_after},
+            headers={"Retry-After": str(retry_after)}
         )
         self.retry_after = retry_after
 

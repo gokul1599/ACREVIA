@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
+from backend.app.database.rls import clear_tenant_context
 
 # Configure engine with connection pooling and SQLite / PostgreSQL compatibility
 connect_args = {}
@@ -79,4 +80,5 @@ def get_db() -> Generator[Session, None, None]:
         logger.error(f"Database session rollback due to error: {e}")
         raise
     finally:
+        clear_tenant_context(db)
         db.close()

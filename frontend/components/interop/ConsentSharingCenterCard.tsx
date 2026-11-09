@@ -123,10 +123,10 @@ export const ConsentSharingCenterCard: React.FC<ConsentSharingCenterCardProps> =
         ) : (
           grants.map((grant) => {
             const partner = partners.find((p) => p.id === grant.partner_id);
-            let categories: string[] = [];
+            let categories: string[];
             try {
               categories = JSON.parse(grant.data_categories_json || "[]");
-            } catch (e) {
+            } catch {
               categories = [];
             }
 

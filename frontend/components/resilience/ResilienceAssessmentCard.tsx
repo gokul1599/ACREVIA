@@ -20,17 +20,17 @@ export const ResilienceAssessmentCard: React.FC<ResilienceAssessmentCardProps> =
   assessment,
   labels,
 }) => {
-  let vulnerabilities: string[] = [];
+  let vulnerabilities: string[];
   try {
     vulnerabilities = JSON.parse(assessment.top_vulnerabilities_json || "[]");
-  } catch (e) {
+  } catch {
     vulnerabilities = [];
   }
 
-  let recommendations: string[] = [];
+  let recommendations: string[];
   try {
     recommendations = JSON.parse(assessment.adaptation_recommendations_json || "[]");
-  } catch (e) {
+  } catch {
     recommendations = [];
   }
 

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple, NamedTuple
 from fastapi import Request, Response
 
 from backend.app.core.config import settings
-from backend.app.core.exceptions import RateLimitExceededException
+from backend.app.core.exceptions import RateLimitExceededException, ServiceUnavailableException
 from backend.app.core.logging import logger
 
 
@@ -25,6 +25,7 @@ class RateLimitResult(NamedTuple):
     remaining: int
     reset_epoch: int
     retry_after: int
+    service_unavailable: bool = False
 
 
 class RateLimitPolicy:
@@ -180,6 +181,7 @@ class RedisRateLimiterBackend(RateLimiterBackend):
                     remaining=0,
                     reset_epoch=int(time.time() + window_seconds),
                     retry_after=window_seconds,
+                    service_unavailable=True,
                 )
             else:
                 logger.warning(f"Redis rate limiter down; falling back to in-memory limiter for {key}")
@@ -221,7 +223,8 @@ class RedisRateLimiterBackend(RateLimiterBackend):
                 retry_after=0,
             )
         except Exception as err:
-            logger.error(f"Redis rate limiter communication error: {err}")
+            logger.error(f"Redis rate limiter communication error: {type(err).__name__}")
+            self._client = None
             if fail_mode == "fail_closed":
                 return RateLimitResult(
                     allowed=False,
@@ -229,6 +232,7 @@ class RedisRateLimiterBackend(RateLimiterBackend):
                     remaining=0,
                     reset_epoch=reset_epoch,
                     retry_after=window_seconds,
+                    service_unavailable=True,
                 )
             return self._fallback.check_rate_limit(key, max_requests, window_seconds, fail_mode)
 
@@ -312,6 +316,17 @@ def rate_limit(
         response.headers["X-RateLimit-Limit"] = str(result.limit)
         response.headers["X-RateLimit-Remaining"] = str(result.remaining)
         response.headers["X-RateLimit-Reset"] = str(result.reset_epoch)
+
+        if result.service_unavailable:
+            response.headers["Retry-After"] = str(result.retry_after)
+            logger.error(
+                f"Rate limit security dependency unavailable on fail-closed endpoint [{endpoint_group}]. "
+                f"Returning HTTP 503 without exposing internal infrastructure details."
+            )
+            raise ServiceUnavailableException(
+                service_name="RateLimiter",
+                message="Authentication rate limiting dependency is currently unavailable. Please retry shortly.",
+            )
 
         if not result.allowed:
             response.headers["Retry-After"] = str(result.retry_after)

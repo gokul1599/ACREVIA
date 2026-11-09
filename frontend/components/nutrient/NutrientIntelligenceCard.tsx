@@ -20,17 +20,17 @@ export const NutrientIntelligenceCard: React.FC<NutrientIntelligenceCardProps> =
   assessment,
   labels,
 }) => {
-  let splitSchedule: any[] = [];
+  let splitSchedule: any[];
   try {
     splitSchedule = JSON.parse(assessment.split_application_schedule_json || "[]");
-  } catch (e) {
+  } catch {
     splitSchedule = [];
   }
 
-  let micronutrientRecs: string[] = [];
+  let micronutrientRecs: string[];
   try {
     micronutrientRecs = JSON.parse(assessment.micronutrient_recommendations_json || "[]");
-  } catch (e) {
+  } catch {
     micronutrientRecs = [];
   }
 

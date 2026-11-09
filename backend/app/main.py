@@ -111,7 +111,8 @@ async def acrevia_exception_handler(request: Request, exc: AcreviaException):
             "detail": exc.message,
             "details": exc.details,
             "correlation_id": getattr(request.state, "correlation_id", None)
-        }
+        },
+        headers=exc.headers if hasattr(exc, "headers") and exc.headers else None
     )
 
 

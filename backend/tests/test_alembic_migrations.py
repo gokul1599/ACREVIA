@@ -56,12 +56,12 @@ def test_alembic_revision_graph_integrity():
     assert "f043516098f8" in revisions
     assert down_revisions["f043516098f8"] is None
 
-    # Target head revision must be f4894a11c87d
-    assert "f4894a11c87d" in revisions
-    assert down_revisions["f4894a11c87d"] == "e3894a11c87d"
+    # Target head revision must be a1089411c87d (PostgreSQL RLS tenant isolation)
+    assert "a1089411c87d" in revisions
+    assert down_revisions["a1089411c87d"] == "f4894a11c87d"
 
     # Verify linear chain from head back to base
-    curr = "f4894a11c87d"
+    curr = "a1089411c87d"
     visited = []
     while curr is not None:
         visited.append(curr)
