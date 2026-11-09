@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/localization/context";
+import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Sprout, Phone, Lock, User, Globe, AlertCircle } from "lucide-react";
 import { Locale } from "@/messages";
@@ -23,6 +24,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError(null);
 
     if (password.length < 8) {
@@ -42,7 +44,12 @@ export default function RegisterPage() {
       setLocale(selectedLang);
       router.push("/onboarding");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Registration failed";
+      let msg = "Registration failed. Please try again.";
+      if (err instanceof ApiError) {
+        msg = err.message;
+      } else if (err instanceof Error) {
+        msg = err.message;
+      }
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -141,7 +148,7 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" isLoading={isLoading}>
+          <Button type="submit" className="w-full" size="lg" isLoading={isLoading} disabled={isLoading}>
             {t.auth.registerSubmit}
           </Button>
         </form>

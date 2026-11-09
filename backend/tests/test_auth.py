@@ -140,3 +140,89 @@ def test_auth_login_quota_exceeded_returns_http_429(client: TestClient, farmer_u
     finally:
         rate_limiter.set_backend(old_backend)
 
+
+def test_auth_routes_registry_verification(client: TestClient):
+    """
+    Verifies that POST /api/v1/auth/login is explicitly registered in FastAPI's
+    master OpenAPI schema and route table with expected HTTP POST method.
+    """
+    from backend.app.main import app
+    openapi = app.openapi()
+    paths = openapi.get("paths", {})
+    assert "/api/v1/auth/login" in paths
+    assert "post" in paths["/api/v1/auth/login"]
+    assert "/api/v1/auth/register" in paths
+    assert "post" in paths["/api/v1/auth/register"]
+    assert "/api/v1/auth/me" in paths
+    assert "get" in paths["/api/v1/auth/me"]
+
+
+def test_auth_login_method_not_allowed(client: TestClient):
+    """
+    Verifies that attempting GET on /api/v1/auth/login returns HTTP 405 Method Not Allowed,
+    confirming the endpoint only accepts POST credentials.
+    """
+    resp = client.get("/api/v1/auth/login")
+    assert resp.status_code == 405
+
+
+def test_auth_login_not_found_on_duplicate_prefix(client: TestClient):
+    """
+    Verifies that requesting a malformed path such as /api/v1/api/v1/auth/login returns
+    HTTP 404 with structured JSON, demonstrating how misconfigured base URLs produce 404s.
+    """
+    resp = client.post("/api/v1/api/v1/auth/login", json={"phone": "+919000000000", "password": "pass"})
+    assert resp.status_code == 404
+    data = resp.json()
+    assert data.get("detail") == "Not Found"
+
+
+def test_auth_synthetic_farmer_login_lifecycle(client: TestClient):
+    """
+    Executes a complete synthetic authentication lifecycle:
+    1. Register synthetic farmer
+    2. Attempt login with invalid password (verify 401 with structured detail)
+    3. Attempt login with valid password (verify 200, JWT token, user payload)
+    4. Access /auth/me with bearer token (verify 200)
+    """
+    phone = "+919999111222"
+    password = "CorrectHorseBattery99!"
+
+    # 1. Register synthetic user
+    reg_resp = client.post("/api/v1/auth/register", json={
+        "phone": phone,
+        "full_name": "Synthetic Test Farmer",
+        "password": password,
+        "language_preference": "te",
+        "role": "FARMER"
+    })
+    assert reg_resp.status_code == 201
+
+    # 2. Login with wrong password
+    bad_login = client.post("/api/v1/auth/login", json={
+        "phone": phone,
+        "password": "WrongPassword99!"
+    })
+    assert bad_login.status_code == 401
+    assert "Invalid phone/email or password." in bad_login.json()["detail"]
+
+    # 3. Login with correct password
+    good_login = client.post("/api/v1/auth/login", json={
+        "phone": phone,
+        "password": password
+    })
+    assert good_login.status_code == 200
+    token_data = good_login.json()
+    assert "access_token" in token_data
+    assert token_data["token_type"] == "bearer"
+    assert token_data["user"]["phone"] == phone
+    assert token_data["user"]["full_name"] == "Synthetic Test Farmer"
+    assert "FARMER" in token_data["user"]["roles"]
+
+    # 4. Verify token access on /auth/me
+    token = token_data["access_token"]
+    me_resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["id"] == token_data["user"]["id"]
+
+

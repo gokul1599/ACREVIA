@@ -66,7 +66,43 @@ import type {
   RegionalSignal,
 } from "./types.ts";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+/**
+ * Resolves and normalizes an API endpoint path against the configured base URL.
+ * Handles trailing slashes, duplicate /api/v1 prefixes, and relative paths.
+ */
+export function resolveApiUrl(endpoint: string, customBaseUrl?: string): string {
+  const rawBase = (customBaseUrl !== undefined ? customBaseUrl : (process.env.NEXT_PUBLIC_API_URL || "")).trim();
+  let base = rawBase.replace(/\/+$/, "");
+
+  if (base.endsWith("/api/v1")) {
+    base = base.slice(0, -"/api/v1".length);
+  } else if (base.endsWith("/api")) {
+    base = base.slice(0, -"/api".length);
+  }
+
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  if (cleanEndpoint.startsWith("/api/v1/")) {
+    return `${base}${cleanEndpoint}`;
+  }
+
+  return `${base}/api/v1${cleanEndpoint}`;
+}
+
+export class ApiError extends Error {
+  public status: number;
+  public detail?: string;
+  public correlationId?: string;
+
+  constructor(status: number, message: string, detail?: string, correlationId?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+    this.correlationId = correlationId;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
 
 class ApiClient {
   private token: string | null = null;
@@ -101,7 +137,7 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${BASE_URL}/api/v1${endpoint}`;
+    const url = resolveApiUrl(endpoint);
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
@@ -114,28 +150,68 @@ class ApiClient {
       headers["Content-Type"] = "application/json";
     }
 
-    const res = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (res.status === 401) {
-      this.setToken(null);
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?expired=1";
-      }
-      throw new Error("Session expired or unauthorized. Please log in again.");
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } catch (networkError: unknown) {
+      const errMsg = networkError instanceof Error ? networkError.message : "Network request failed";
+      throw new ApiError(
+        0,
+        `Unable to reach ACREVIA backend at ${url}. Please verify your network connection and API server status. (${errMsg})`
+      );
     }
 
+    const contentType = res.headers.get("content-type") || "";
+    const isJson = contentType.includes("application/json");
+    let errorDetail: string | undefined;
+    let correlationId = res.headers.get("x-correlation-id") || undefined;
+
     if (!res.ok) {
-      let errorMsg = `API request failed with status ${res.status}`;
-      try {
-        const errorData = await res.json();
-        errorMsg = errorData.detail || errorData.message || errorMsg;
-      } catch {
-        // non-json response
+      if (isJson) {
+        try {
+          const errorData = await res.json();
+          errorDetail = errorData.detail || errorData.message || (typeof errorData === "string" ? errorData : undefined);
+          correlationId = errorData.correlation_id || correlationId;
+        } catch {
+          // non-parseable JSON
+        }
       }
-      throw new Error(errorMsg);
+
+      if (res.status === 401) {
+        this.setToken(null);
+        const isAuthPage = typeof window !== "undefined" &&
+          (window.location.pathname.startsWith("/login") || window.location.pathname.startsWith("/register"));
+        if (typeof window !== "undefined" && !isAuthPage) {
+          window.location.href = "/login?expired=1";
+        }
+        const msg = errorDetail || "Invalid phone/email or password.";
+        throw new ApiError(401, msg, errorDetail, correlationId);
+      }
+
+      if (res.status === 404) {
+        const msg = errorDetail || `Authentication service endpoint unreachable (404 Not Found at ${url}). Please verify backend API connectivity and route configuration.`;
+        throw new ApiError(404, msg, errorDetail, correlationId);
+      }
+
+      if (res.status === 429) {
+        const msg = errorDetail || "Rate limit exceeded. Too many requests. Please wait a moment before trying again.";
+        throw new ApiError(429, msg, errorDetail, correlationId);
+      }
+
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        const msg = errorDetail || `ACREVIA backend service is currently unavailable (${res.status}). Please verify that the API server is running.`;
+        throw new ApiError(res.status, msg, errorDetail, correlationId);
+      }
+
+      const fallbackMsg = errorDetail || `API request failed with status ${res.status}`;
+      throw new ApiError(res.status, fallbackMsg, errorDetail, correlationId);
+    }
+
+    if (res.status === 204) {
+      return {} as T;
     }
 
     return res.json() as Promise<T>;
@@ -291,7 +367,7 @@ class ApiClient {
   }
 
   getMediaFileUrl(obsId: string, mediaId: string): string {
-    return `${BASE_URL}/api/v1/observations/${obsId}/media/${mediaId}/stream`;
+    return resolveApiUrl(`/observations/${obsId}/media/${mediaId}/stream`);
   }
 
   // --- Diagnoses ---

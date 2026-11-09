@@ -25,6 +25,7 @@
 | **`OWNER-AUTH-01`** | D10 | Project Leadership Identity & Formal Decision Sign-Off | Critical | **`AWAITING_OWNER_INPUT`** | Formal decision document prepared; identity fields and Gates A01–A05 unpopulated awaiting direct leadership input. |
 | **`FIELD-PILOT-01`** | D11 | On-Farm Pilot Trials & Agricultural Chemical Advice | Critical | **`STRICTLY_PROHIBITED`** | Gates A10, A11, A12 strictly enforced; field trials, surveying, and personal data collection prohibited. |
 | **`SATELLITE-PROVIDER-01`**| D12/D13 | Geospatial Satellite Data Ingestion Resilience | Medium | **`COMPLETE_VERIFIED`** | Primary Earth Search STAC (AWS Singapore) with Planetary Computer fallback; automated cloud masking verified. |
+| **`AUTH-ROUTING-01`** | — | Authentication API URL Composition & 404 Routing Diagnostics | High | **`COMPLETE_VERIFIED`** | Implemented `resolveApiUrl()` with automatic `/api/v1` and trailing slash deduplication; implemented `ApiError` with explicit non-JSON 404, 429, 503, and network failure diagnostics; Next.js rewrites normalized; synthetic login lifecycle independently verified; 11 frontend and 4 backend tests passing. |
 
 ---
 

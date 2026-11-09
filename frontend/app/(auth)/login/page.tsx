@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useTranslation } from "@/lib/localization/context";
+import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Sprout, Phone, Lock, AlertCircle } from "lucide-react";
 
@@ -20,6 +21,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setError(null);
 
     if (!phone || !password) {
@@ -32,7 +34,12 @@ export default function LoginPage() {
       await login({ phone: phone.trim(), password });
       router.push("/dashboard");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid credentials";
+      let msg = "Invalid credentials. Please verify your phone number and password.";
+      if (err instanceof ApiError) {
+        msg = err.message;
+      } else if (err instanceof Error) {
+        msg = err.message;
+      }
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -95,7 +102,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" isLoading={isLoading}>
+          <Button type="submit" className="w-full" size="lg" isLoading={isLoading} disabled={isLoading}>
             {t.auth.loginSubmit}
           </Button>
         </form>
