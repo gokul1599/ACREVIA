@@ -45,8 +45,8 @@ test('Auth Client - resolveApiUrl preserves already-prefixed endpoints without d
 
 test('Auth Client - next.config.mjs rewrites rule exists and targets normalized backend URL', async () => {
   assert.ok(typeof nextConfig.rewrites === 'function', 'nextConfig must define rewrites');
-  const rewrites = await nextConfig.rewrites();
-  assert.ok(Array.isArray(rewrites), 'rewrites must return an array');
+  const res = await nextConfig.rewrites();
+  const rewrites = Array.isArray(res) ? res : (res.fallback || res.afterFiles || []);
   const v1Rewrite = rewrites.find(r => r.source === '/api/v1/:path*');
   assert.ok(v1Rewrite, 'Must contain /api/v1/:path* rewrite rule');
   assert.ok(v1Rewrite.destination.endsWith('/api/v1/:path*'), 'Destination must preserve /api/v1/:path*');
