@@ -17,15 +17,23 @@ from sqlalchemy import text
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from backend.app.database.rls import TABLE_CLASSIFICATION, TableCategory
-from scripts.neon_staging_branch_spec import is_production_url
+from scripts.neon_staging_branch_spec import (
+    validate_database_target,
+    TargetValidationResult,
+    is_production_url,
+)
 
 
 def verify_staging_database_rls(connection_url: str) -> Dict[str, Any]:
     """
     Executes PostgreSQL catalog inspection and policy verification on an isolated staging database.
     """
-    if is_production_url(connection_url):
+    val_res = validate_database_target(connection_url)
+    if val_res == TargetValidationResult.PRODUCTION_TARGET_DETECTED:
         print("[CRITICAL SAFETY ERROR] Connection URL identified as PRODUCTION. Aborting immediately!")
+        sys.exit(1)
+    if val_res != TargetValidationResult.VALID_STAGING_CANDIDATE:
+        print(f"[CRITICAL SAFETY ERROR] Target URL validation failed ({val_res.value}). Unknown or unclassifiable targets must not proceed!")
         sys.exit(1)
 
     print(f"[RLS Verification] Connecting to safe staging database...")
@@ -169,16 +177,22 @@ def main():
     target_url = args.url or os.environ.get("STAGING_DATABASE_URL", "")
 
     if not target_url:
-        print("[Notice] No staging database URL provided. Set STAGING_DATABASE_URL or pass --url.")
+        print("[BLOCKED] No staging database URL provided. Set STAGING_DATABASE_URL or pass --url.")
         print("[Notice] Real PostgreSQL integration requires an authorized, isolated Neon staging branch.")
-        sys.exit(0)
+        sys.exit(2)
 
-    if is_production_url(target_url):
+    val_res = validate_database_target(target_url)
+    if val_res == TargetValidationResult.PRODUCTION_TARGET_DETECTED:
         print("[CRITICAL SAFETY ERROR] Target URL matches production indicators. Aborting immediately!")
         sys.exit(1)
 
+    if val_res != TargetValidationResult.VALID_STAGING_CANDIDATE:
+        print(f"[CRITICAL SAFETY ERROR] Target URL validation failed ({val_res.value}). Unknown or unclassifiable targets must not proceed!")
+        sys.exit(1)
+
     if args.dry_run:
-        print("[Dry Run] Staging URL verified as non-production. Ready for authorized execution.")
+        print("[Dry Run] LOCAL_TARGET_FORMAT_CHECK_PASSED. Staging URL candidate validated format.")
+        print("[Notice] LIVE_STAGING_VERIFIED status requires real remote execution with live database queries.")
         sys.exit(0)
 
     results = verify_staging_database_rls(target_url)

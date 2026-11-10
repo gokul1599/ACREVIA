@@ -29,6 +29,8 @@ def get_current_user(
 ) -> User:
     """
     Validates JWT bearer token and retrieves active User record from database.
+    Under PostgreSQL FORCE RLS, user context must be established after cryptographic
+    token verification but prior to querying the USER_OWNED users table.
     """
     if not token:
         raise HTTPException(
@@ -49,18 +51,27 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+    # 1. Establish transaction-local user context using cryptographically validated JWT subject
+    # This ensures PostgreSQL RLS policies on USER_OWNED tables (users, user_roles) allow the query
+    set_tenant_context(db, tenant_id=None, user_id=user_id, is_admin=False)
+
+    # 2. Retrieve user record under RLS
     user = db.get(User, user_id)
     if not user or not user.is_active:
+        # Clear candidate context on lookup failure or inactive status
+        set_tenant_context(db, tenant_id=None, user_id=None, is_admin=False)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is inactive or does not exist.",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    # Set user context in database session for RLS / audit isolation
+    # 3. Load user roles under user_owned and shared_reference policies
     user_roles = [r.id for r in user.roles]
     is_admin = SystemRole.ADMIN.value in user_roles
-    set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=is_admin)
+    if is_admin:
+        # Update context to reflect application-level admin status for auditing/local tracking
+        set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=True)
 
     return user
 
@@ -73,7 +84,7 @@ def require_roles(*allowed_roles: str) -> Callable:
     def role_checker(current_user: User = Depends(get_current_user)) -> User:
         user_roles = [r.id for r in current_user.roles]
         if SystemRole.ADMIN.value in user_roles:
-            return current_user  # Superuser bypass
+            return current_user  # Application-level admin authorization
 
         for role in allowed_roles:
             if role in user_roles:
@@ -95,27 +106,34 @@ def verify_farm_access(
 ) -> Farm:
     """
     Validates whether the user is authorized to read/modify the specified farm.
-    Blocks cross-farm unauthorized access attempts.
+    Under PostgreSQL FORCE RLS, candidate tenant context must be set prior to
+    querying the TENANT_DIRECT farms table, but is strictly cleared on any authorization rejection.
     """
     user_roles = [r.id for r in user.roles]
+    is_admin = SystemRole.ADMIN.value in user_roles
+
+    # 1. Establish candidate transaction-local tenant context for requested farm
+    # app.current_user_id is already set to user.id by get_current_user
+    set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=is_admin)
+
+    # 2. Retrieve candidate farm under RLS
     farm = db.get(Farm, farm_id)
     if not farm or farm.is_archived:
+        set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=False)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Farm with identifier '{farm_id}' was not found."
         )
 
-    # 1. Superuser override
-    if SystemRole.ADMIN.value in user_roles:
-        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=True)
+    # 3. Application administrator authorization (Option A: farm-scoped admin)
+    if is_admin:
         return farm
 
-    # 2. Primary Farm Owner
+    # 4. Primary Farm Owner authorization
     if farm.owner_id == user.id:
-        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
         return farm
 
-    # 3. Active Farm Membership
+    # 5. Active Farm Membership authorization
     membership = (
         db.query(FarmMembership)
         .filter(
@@ -128,16 +146,17 @@ def verify_farm_access(
     if membership:
         if allowed_farm_roles:
             if membership.role_in_farm in allowed_farm_roles:
-                set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
                 return farm
+            # Role mismatch: reset candidate tenant context before raising
+            set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=False)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Action requires one of farm roles: {allowed_farm_roles}, but user has '{membership.role_in_farm}'."
             )
-        set_tenant_context(db, tenant_id=farm_id, user_id=user.id, is_admin=False)
         return farm
 
-    # 4. Cross-Farm Access Denied
+    # 6. Cross-Farm Access Denied: User is neither owner nor authorized member
+    set_tenant_context(db, tenant_id=None, user_id=user.id, is_admin=False)
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Access to requested farm is forbidden: you are not an owner or member."

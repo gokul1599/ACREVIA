@@ -6,9 +6,11 @@ and privacy-preserving aggregate metrics.
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.database.session import get_db
+from backend.app.models.collective import OrganizationMembership
 from backend.app.models.user import User
 from backend.app.schemas.collective import (
     AgriculturalOrganizationCreate,
@@ -42,7 +44,28 @@ def list_organizations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return CollectivesService.list_organizations(db, district=district, org_type=org_type, limit=limit, offset=offset)
+    orgs = CollectivesService.list_organizations(db, district=district, org_type=org_type, limit=limit, offset=offset)
+    user_roles = [r.id for r in current_user.roles]
+    is_admin = "ADMIN" in user_roles
+
+    user_org_ids = set()
+    if not is_admin:
+        user_org_ids = set(
+            db.scalars(
+                select(OrganizationMembership.organization_id)
+                .where(OrganizationMembership.user_id == current_user.id, OrganizationMembership.is_active == True)
+            ).all()
+        )
+
+    results = []
+    for org in orgs:
+        org_data = AgriculturalOrganizationResponse.model_validate(org)
+        if not is_admin and org.id not in user_org_ids:
+            org_data.contact_email = None
+            org_data.contact_phone = None
+            org_data.registration_number = None
+        results.append(org_data)
+    return results
 
 
 @router.get("/organizations/{org_id}", response_model=AgriculturalOrganizationResponse, status_code=status.HTTP_200_OK)
@@ -57,7 +80,27 @@ def get_organization(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agricultural organization not found",
         )
-    return org
+    user_roles = [r.id for r in current_user.roles]
+    is_admin = "ADMIN" in user_roles
+
+    is_member = False
+    if not is_admin:
+        membership = db.scalar(
+            select(OrganizationMembership)
+            .where(
+                OrganizationMembership.organization_id == org_id,
+                OrganizationMembership.user_id == current_user.id,
+                OrganizationMembership.is_active == True,
+            )
+        )
+        is_member = membership is not None
+
+    org_data = AgriculturalOrganizationResponse.model_validate(org)
+    if not is_admin and not is_member:
+        org_data.contact_email = None
+        org_data.contact_phone = None
+        org_data.registration_number = None
+    return org_data
 
 
 @router.post("/organizations/{org_id}/verify", response_model=AgriculturalOrganizationResponse, status_code=status.HTTP_200_OK)

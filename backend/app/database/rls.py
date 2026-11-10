@@ -135,50 +135,118 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "api_credentials": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "api_applications", "fk": "application_id"},
     "webhook_deliveries": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "webhook_endpoints", "fk": "endpoint_id"},
 
-    # 4. Shared Reference / Knowledge Catalogs (26 tables)
-    "roles": {"category": TableCategory.SHARED_REFERENCE},
-    "crops": {"category": TableCategory.SHARED_REFERENCE},
-    "crop_varieties": {"category": TableCategory.SHARED_REFERENCE},
-    "crop_calendar_definitions": {"category": TableCategory.SHARED_REFERENCE},
-    "agricultural_practice_definitions": {"category": TableCategory.SHARED_REFERENCE},
-    "market_commodities": {"category": TableCategory.SHARED_REFERENCE},
-    "market_locations": {"category": TableCategory.SHARED_REFERENCE},
-    "market_price_observations": {"category": TableCategory.SHARED_REFERENCE},
-    "satellite_sources": {"category": TableCategory.SHARED_REFERENCE},
-    "climate_baselines": {"category": TableCategory.SHARED_REFERENCE},
-    "risk_rules": {"category": TableCategory.SHARED_REFERENCE},
-    "integration_partners": {"category": TableCategory.SHARED_REFERENCE},
-    "partner_integrations": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_sources": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_documents": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_document_versions": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_chunks": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_embeddings": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_entities": {"category": TableCategory.SHARED_REFERENCE},
-    "knowledge_relationships": {"category": TableCategory.SHARED_REFERENCE},
-    "ingestion_jobs": {"category": TableCategory.SHARED_REFERENCE},
-    "learning_resources": {"category": TableCategory.SHARED_REFERENCE},
-    "training_events": {"category": TableCategory.SHARED_REFERENCE},
-    "satellite_acquisitions": {"category": TableCategory.SHARED_REFERENCE},
-    "produce_quality_profiles": {"category": TableCategory.SHARED_REFERENCE},
+    # 4. Shared Reference / Knowledge Catalogs (25 tables)
+    "roles": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "crops": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "crop_varieties": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "crop_calendar_definitions": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "agricultural_practice_definitions": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "market_commodities": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "market_locations": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "market_price_observations": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "satellite_sources": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "climate_baselines": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "risk_rules": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "produce_quality_profiles": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "learning_resources": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "training_events": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_sources": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_documents": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_document_versions": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_chunks": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_embeddings": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_entities": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "knowledge_relationships": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    "satellite_acquisitions": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PUBLIC_REFERENCE"},
+    # Sensitive Operational and Integration Catalogs (Restricted to Database Admin / Ingestion Workers)
+    "ingestion_jobs": {"category": TableCategory.SHARED_REFERENCE, "access_type": "PRIVATE_OPERATIONAL"},
+    "partner_integrations": {"category": TableCategory.SHARED_REFERENCE, "access_type": "ADMINISTRATIVE"},
+    "integration_partners": {"category": TableCategory.SHARED_REFERENCE, "access_type": "ADMINISTRATIVE"},
 
-    # 5. Community & Collaborative Hub (18 tables)
-    "communities": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "community_posts": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "community_comments": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "community_reports": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "knowledge_contributions": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "contribution_reviews": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "translation_versions": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "agricultural_organizations": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "collective_activities": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "research_projects": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "research_consents": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "dataset_contributions": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "annotation_tasks": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "annotation_records": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "regional_signals": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
-    "regional_signal_evidences": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
+    # 5. Community & Collaborative Hub (16 tables)
+    "communities": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "created_by_user_id",
+        "public_read": True,
+    },
+    "community_posts": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "author_id",
+        "public_read": True,
+        "read_filter": "moderation_status = 'APPROVED' AND visibility = 'COMMUNITY_PUBLIC'",
+    },
+    "community_comments": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "author_id",
+        "public_read": True,
+        "read_filter": "moderation_status = 'APPROVED'",
+    },
+    "community_reports": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "reported_by_user_id",
+        "public_read": False,  # Private: reporter or admin only
+    },
+    "knowledge_contributions": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "contributor_id",
+        "public_read": True,
+        "read_filter": "status IN ('APPROVED', 'PUBLISHED')",
+    },
+    "contribution_reviews": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "reviewer_id",
+        "public_read": True,
+    },
+    "translation_versions": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "parent_table": "knowledge_contributions",
+        "fk": "contribution_id",
+    },
+    "agricultural_organizations": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "public_read": True,
+        "read_filter": "verification_status = 'APPROVED'",
+    },
+    "collective_activities": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "created_by_user_id",
+        "public_read": True,
+    },
+    "research_projects": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "lead_researcher_id",
+        "public_read": True,
+        "read_filter": "project_status = 'ACTIVE'",
+    },
+    "research_consents": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "farmer_id",
+        "public_read": False,  # Private: farmer or admin only
+    },
+    "dataset_contributions": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "contributor_id",
+        "public_read": True,
+        "read_filter": "status = 'PUBLISHED'",
+    },
+    "annotation_tasks": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "assigned_expert_id",
+        "public_read": True,
+    },
+    "annotation_records": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "author_column": "annotator_id",
+        "public_read": True,
+    },
+    "regional_signals": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "public_read": True,
+    },
+    "regional_signal_evidences": {
+        "category": TableCategory.COMMUNITY_COLLABORATIVE,
+        "public_read": True,
+    },
 }
 
 
@@ -222,7 +290,16 @@ def set_tenant_context(
                 {"val": admin_val}
             )
     except Exception as exc:
-        logger.warning(f"Could not apply PostgreSQL RLS runtime configuration: {exc}")
+        logger.error(f"Failed to set PostgreSQL RLS tenant context: {exc}")
+        # On PostgreSQL, failing to establish security context must not be silently swallowed
+        bind = None
+        try:
+            bind = session.get_bind()
+        except Exception:
+            pass
+        if bind and bind.dialect.name == "postgresql":
+            session.rollback()
+            raise RuntimeError(f"Database security error: Failed to establish tenant context: {exc}") from exc
 
 
 def clear_tenant_context(session: Session) -> None:
@@ -312,7 +389,79 @@ CREATE POLICY {table_name}_user_isolation_policy ON {table_name}
     );
 """
     elif category == TableCategory.SHARED_REFERENCE:
-        return f"""
+        meta = TABLE_CLASSIFICATION.get(table_name, {})
+        access_type = meta.get("access_type", "PUBLIC_REFERENCE")
+
+        if access_type in ("ADMINISTRATIVE", "PRIVATE_OPERATIONAL"):
+            # Private operational / Administrative internal table: ZERO public read!
+            if table_name == "ingestion_jobs":
+                # Ingestion jobs: Authorized Agronomists/Researchers/Admins or Database Admin
+                auth_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+                AND ur.role_id IN ('ADMIN', 'AGRICULTURAL_EXPERT', 'RESEARCHER')
+            )
+        )
+    )"""
+                return f"""
+-- Table: {table_name} (Private Operational Reference - Ingestion Worker / Admin Scoped)
+ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_shared_read_policy ON {table_name};
+DROP POLICY IF EXISTS {table_name}_admin_write_policy ON {table_name};
+CREATE POLICY {table_name}_admin_write_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING ({auth_expr})
+    WITH CHECK ({auth_expr});
+"""
+            return f"""
+-- Table: {table_name} (Private Operational / Administrative Reference - Admin Only)
+ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_shared_read_policy ON {table_name};
+DROP POLICY IF EXISTS {table_name}_admin_write_policy ON {table_name};
+CREATE POLICY {table_name}_admin_write_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING ({ADMIN_BYPASS_SQL})
+    WITH CHECK ({ADMIN_BYPASS_SQL});
+"""
+        elif access_type == "AUTHENTICATED_SHARED":
+            # Authenticated read, administrative write
+            return f"""
+-- Table: {table_name} (Authenticated Shared Reference - Authenticated Read, Admin Write)
+ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS {table_name}_shared_read_policy ON {table_name};
+CREATE POLICY {table_name}_shared_read_policy ON {table_name}
+    AS PERMISSIVE
+    FOR SELECT
+    TO PUBLIC
+    USING (
+        {ADMIN_BYPASS_SQL}
+        OR current_setting('app.current_user_id', true) != ''
+    );
+
+DROP POLICY IF EXISTS {table_name}_admin_write_policy ON {table_name};
+CREATE POLICY {table_name}_admin_write_policy ON {table_name}
+    AS PERMISSIVE
+    FOR ALL
+    TO PUBLIC
+    USING ({ADMIN_BYPASS_SQL})
+    WITH CHECK ({ADMIN_BYPASS_SQL});
+"""
+        else:
+            # PUBLIC_REFERENCE: Public Read, Admin Write (both PERMISSIVE)
+            return f"""
 -- Table: {table_name} (Shared Reference - Public Read, Admin Write)
 ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
 
@@ -325,7 +474,7 @@ CREATE POLICY {table_name}_shared_read_policy ON {table_name}
 
 DROP POLICY IF EXISTS {table_name}_admin_write_policy ON {table_name};
 CREATE POLICY {table_name}_admin_write_policy ON {table_name}
-    AS RESTRICTIVE
+    AS PERMISSIVE
     FOR ALL
     TO PUBLIC
     USING ({ADMIN_BYPASS_SQL})
@@ -402,29 +551,417 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
     );
 """
     elif category == TableCategory.COMMUNITY_COLLABORATIVE:
+        meta = TABLE_CLASSIFICATION.get(table_name, {})
+
+        if table_name == "community_posts":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR author_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM community_memberships cm
+            WHERE cm.community_id = community_posts.community_id
+            AND cm.user_id::text = current_setting('app.current_user_id', true)
+            AND cm.role = 'MODERATOR'
+        )
+        OR (
+            moderation_status = 'APPROVED'
+            AND (
+                visibility = 'COMMUNITY_PUBLIC'
+                OR (
+                    visibility = 'RESTRICTED_MEMBERS'
+                    AND EXISTS (
+                        SELECT 1 FROM community_memberships cm
+                        WHERE cm.community_id = community_posts.community_id
+                        AND cm.user_id::text = current_setting('app.current_user_id', true)
+                    )
+                )
+                OR (
+                    visibility = 'EXPERT_ONLY'
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM community_memberships cm
+                            WHERE cm.community_id = community_posts.community_id
+                            AND cm.user_id::text = current_setting('app.current_user_id', true)
+                            AND cm.role IN ('EXPERT_ADVISOR', 'MODERATOR')
+                        )
+                        OR EXISTS (
+                            SELECT 1 FROM user_roles ur
+                            WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+                            AND ur.role_id IN ('AGRICULTURAL_EXPERT', 'RESEARCHER', 'ADMIN')
+                        )
+                    )
+                )
+            )
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND author_id::text = current_setting('app.current_user_id', true)
+        )
+        OR EXISTS (
+            SELECT 1 FROM community_memberships cm
+            WHERE cm.community_id = community_posts.community_id
+            AND cm.user_id::text = current_setting('app.current_user_id', true)
+            AND cm.role = 'MODERATOR'
+        )
+    )"""
+        elif table_name == "community_comments":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR author_id::text = current_setting('app.current_user_id', true)
+        OR (
+            moderation_status = 'APPROVED'
+            AND EXISTS (
+                SELECT 1 FROM community_posts cp
+                WHERE cp.id = community_comments.post_id
+                AND (
+                    cp.author_id::text = current_setting('app.current_user_id', true)
+                    OR EXISTS (
+                        SELECT 1 FROM community_memberships cm
+                        WHERE cm.community_id = cp.community_id
+                        AND cm.user_id::text = current_setting('app.current_user_id', true)
+                        AND cm.role = 'MODERATOR'
+                    )
+                    OR (
+                        cp.moderation_status = 'APPROVED'
+                        AND (
+                            cp.visibility = 'COMMUNITY_PUBLIC'
+                            OR (
+                                cp.visibility = 'RESTRICTED_MEMBERS'
+                                AND EXISTS (
+                                    SELECT 1 FROM community_memberships cm
+                                    WHERE cm.community_id = cp.community_id
+                                    AND cm.user_id::text = current_setting('app.current_user_id', true)
+                                )
+                            )
+                            OR (
+                                cp.visibility = 'EXPERT_ONLY'
+                                AND (
+                                    EXISTS (
+                                        SELECT 1 FROM community_memberships cm
+                                        WHERE cm.community_id = cp.community_id
+                                        AND cm.user_id::text = current_setting('app.current_user_id', true)
+                                        AND cm.role IN ('EXPERT_ADVISOR', 'MODERATOR')
+                                    )
+                                    OR EXISTS (
+                                        SELECT 1 FROM user_roles ur
+                                        WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+                                        AND ur.role_id IN ('AGRICULTURAL_EXPERT', 'RESEARCHER', 'ADMIN')
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND author_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "community_reports":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR reported_by_user_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM community_posts cp
+            JOIN community_memberships cm ON cm.community_id = cp.community_id
+            WHERE (
+                cp.id = community_reports.post_id
+                OR cp.id IN (SELECT cc.post_id FROM community_comments cc WHERE cc.id = community_reports.comment_id)
+            )
+            AND cm.user_id::text = current_setting('app.current_user_id', true)
+            AND cm.role = 'MODERATOR'
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND reported_by_user_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "knowledge_contributions":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR contributor_id::text = current_setting('app.current_user_id', true)
+        OR assigned_expert_id::text = current_setting('app.current_user_id', true)
+        OR status IN ('APPROVED', 'PUBLISHED')
+        OR EXISTS (
+            SELECT 1 FROM user_roles ur
+            WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+            AND ur.role_id IN ('AGRICULTURAL_EXPERT', 'RESEARCHER', 'ADMIN')
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND contributor_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "contribution_reviews":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR reviewer_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM knowledge_contributions kc
+            WHERE kc.id = contribution_reviews.contribution_id
+            AND (
+                kc.contributor_id::text = current_setting('app.current_user_id', true)
+                OR kc.status IN ('APPROVED', 'PUBLISHED')
+            )
+        )
+        OR EXISTS (
+            SELECT 1 FROM user_roles ur
+            WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+            AND ur.role_id IN ('AGRICULTURAL_EXPERT', 'RESEARCHER', 'ADMIN')
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND reviewer_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "translation_versions":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR reviewer_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM knowledge_contributions kc
+            WHERE kc.id = translation_versions.contribution_id
+            AND (
+                kc.contributor_id::text = current_setting('app.current_user_id', true)
+                OR (
+                    kc.status IN ('APPROVED', 'PUBLISHED')
+                    AND translation_versions.is_native_reviewed = true
+                )
+            )
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND (
+                reviewer_id::text = current_setting('app.current_user_id', true)
+                OR EXISTS (
+                    SELECT 1 FROM knowledge_contributions kc
+                    WHERE kc.id = translation_versions.contribution_id
+                    AND kc.contributor_id::text = current_setting('app.current_user_id', true)
+                )
+            )
+        )
+    )"""
+        elif table_name == "agricultural_organizations":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR verification_status = 'APPROVED'
+        OR EXISTS (
+            SELECT 1 FROM organization_memberships om
+            WHERE om.organization_id = agricultural_organizations.id
+            AND om.user_id::text = current_setting('app.current_user_id', true)
+            AND om.is_active = true
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR EXISTS (
+            SELECT 1 FROM organization_memberships om
+            WHERE om.organization_id = agricultural_organizations.id
+            AND om.user_id::text = current_setting('app.current_user_id', true)
+            AND om.org_role = 'ORGANIZATION_ADMIN'
+            AND om.is_active = true
+        )
+    )"""
+        elif table_name == "collective_activities":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR created_by_user_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM organization_memberships om
+            WHERE om.organization_id = collective_activities.organization_id
+            AND om.user_id::text = current_setting('app.current_user_id', true)
+            AND om.is_active = true
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            created_by_user_id::text = current_setting('app.current_user_id', true)
+            AND EXISTS (
+                SELECT 1 FROM organization_memberships om
+                WHERE om.organization_id = collective_activities.organization_id
+                AND om.user_id::text = current_setting('app.current_user_id', true)
+                AND om.is_active = true
+                AND om.org_role IN ('ORGANIZATION_ADMIN', 'GROUP_COORDINATOR')
+            )
+        )
+    )"""
+        elif table_name == "research_projects":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR lead_researcher_id::text = current_setting('app.current_user_id', true)
+        OR project_status = 'ACTIVE'
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND lead_researcher_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "research_consents":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR farmer_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM research_projects rp
+            WHERE rp.id = research_consents.project_id
+            AND rp.lead_researcher_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND farmer_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "dataset_contributions":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR contributor_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM research_projects rp
+            WHERE rp.id = dataset_contributions.project_id
+            AND rp.lead_researcher_id::text = current_setting('app.current_user_id', true)
+        )
+        OR status = 'PUBLISHED'
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND contributor_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "annotation_tasks":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR assigned_expert_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM research_projects rp
+            WHERE rp.id = annotation_tasks.project_id
+            AND rp.lead_researcher_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR EXISTS (
+            SELECT 1 FROM research_projects rp
+            WHERE rp.id = annotation_tasks.project_id
+            AND rp.lead_researcher_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name == "annotation_records":
+            read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR annotator_id::text = current_setting('app.current_user_id', true)
+        OR EXISTS (
+            SELECT 1 FROM annotation_tasks at
+            WHERE at.id = annotation_records.task_id
+            AND (
+                at.assigned_expert_id::text = current_setting('app.current_user_id', true)
+                OR EXISTS (
+                    SELECT 1 FROM research_projects rp
+                    WHERE rp.id = at.project_id
+                    AND rp.lead_researcher_id::text = current_setting('app.current_user_id', true)
+                )
+            )
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND annotator_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        elif table_name in ("regional_signals", "regional_signal_evidences"):
+            if table_name == "regional_signals":
+                read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            distinct_farms_count >= 3
+            AND validation_status != 'SUSPENDED'
+        )
+    )"""
+            else:
+                read_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR EXISTS (
+            SELECT 1 FROM regional_signals rs
+            WHERE rs.id = regional_signal_evidences.signal_id
+            AND rs.distinct_farms_count >= 3
+            AND rs.validation_status != 'SUSPENDED'
+        )
+    )"""
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+                AND ur.role_id IN ('ADMIN', 'AGRICULTURAL_EXPERT', 'RESEARCHER')
+            )
+        )
+    )"""
+        elif table_name == "communities":
+            read_expr = "true"
+            write_expr = f"""(
+        {ADMIN_BYPASS_SQL}
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND created_by_user_id::text = current_setting('app.current_user_id', true)
+        )
+    )"""
+        else:
+            author_col = meta.get("author_column")
+            if author_col:
+                read_expr = f"({ADMIN_BYPASS_SQL} OR {author_col}::text = current_setting('app.current_user_id', true))"
+                write_expr = f"({ADMIN_BYPASS_SQL} OR (current_setting('app.current_user_id', true) != '' AND {author_col}::text = current_setting('app.current_user_id', true)))"
+            else:
+                read_expr = f"({ADMIN_BYPASS_SQL})"
+                write_expr = f"({ADMIN_BYPASS_SQL})"
+
         return f"""
--- Table: {table_name} (Community & Collaborative Hub - Shared Read, Author Write)
+-- Table: {table_name} (Collaborative Table with Scoped Security)
 ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS {table_name}_public_read_policy ON {table_name};
 CREATE POLICY {table_name}_public_read_policy ON {table_name}
     AS PERMISSIVE
     FOR SELECT
     TO PUBLIC
-    USING (true);
+    USING ({read_expr});
 
 DROP POLICY IF EXISTS {table_name}_author_write_policy ON {table_name};
 CREATE POLICY {table_name}_author_write_policy ON {table_name}
-    AS RESTRICTIVE
+    AS PERMISSIVE
     FOR ALL
     TO PUBLIC
-    USING (
-        {ADMIN_BYPASS_SQL}
-        OR current_setting('app.current_user_id', true) != ''
-    )
-    WITH CHECK (
-        {ADMIN_BYPASS_SQL}
-        OR current_setting('app.current_user_id', true) != ''
-    );
+    USING ({write_expr})
+    WITH CHECK ({write_expr});
 """
     return ""
