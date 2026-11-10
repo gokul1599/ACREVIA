@@ -118,9 +118,10 @@ def verify_staging_database_rls(connection_url: str) -> Dict[str, Any]:
             try:
                 # Attempt to self-escalate via GUC parameter
                 conn.execute(text("SELECT set_config('app.is_admin', 'true', true);"))
-                # Probe policy predicate evaluation
+                # Probe policy predicate evaluation with dual SESSION_USER and CURRENT_USER boundary
                 predicate_test = conn.execute(text("""
-                    SELECT (CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') 
+                    SELECT (SESSION_USER::text IN ('neondb_owner', 'acrevia_admin')
+                            AND CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') 
                             AND current_setting('app.is_admin', true) = 'true') AS can_bypass;
                 """)).scalar()
                 report["guc_self_escalation_blocked"] = not predicate_test
@@ -128,6 +129,32 @@ def verify_staging_database_rls(connection_url: str) -> Dict[str, Any]:
             except Exception as e:
                 print(f"[Trust Boundary] Escalation probe error: {e}")
                 report["guc_self_escalation_blocked"] = True
+
+        # 6. SECURITY DEFINER Audit (pg_proc inspection)
+        secdef_result = conn.execute(text("""
+            SELECT p.proname, n.nspname, r.rolname AS owner
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            JOIN pg_roles r ON r.oid = p.proowner
+            WHERE p.prosecdef = true AND n.nspname NOT IN ('pg_catalog', 'information_schema');
+        """))
+        secdef_funcs = secdef_result.fetchall()
+        report["security_definer_functions_count"] = len(secdef_funcs)
+        report["security_definer_functions"] = [{"name": f[0], "schema": f[1], "owner": f[2]} for f in secdef_funcs]
+        print(f"[Security Audit] User-defined SECURITY DEFINER functions: {len(secdef_funcs)}")
+
+        # 7. Table Ownership Audit (pg_class inspection)
+        ownership_result = conn.execute(text("""
+            SELECT c.relname, r.rolname AS owner
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_roles r ON r.oid = c.relowner
+            WHERE n.nspname = 'public' AND c.relkind = 'r' AND r.rolname NOT IN ('neondb_owner', 'postgres');
+        """))
+        unauthorized_owners = ownership_result.fetchall()
+        report["unauthorized_table_owners"] = [f"{o[0]} owned by {o[1]}" for o in unauthorized_owners]
+        report["table_ownership_safe"] = len(unauthorized_owners) == 0
+        print(f"[Security Audit] Protected tables with unexpected owners: {len(unauthorized_owners)}")
 
     report["verified_tables_count"] = len(report["rls_enabled_tables"])
     return report

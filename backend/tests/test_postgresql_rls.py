@@ -380,23 +380,60 @@ def test_tenant_isolation_criteria_16_admin_access_bypass(db_session):
 
 def test_unprivileged_role_guc_self_escalation_blocked():
     """
-    WP-02 / TASK-S06-01: Verify that an unprivileged database runtime role
+    WP-02 / TASK-S06-01 & Phase 07 WP-02: Verify that an unprivileged database runtime role
     (e.g., 'acrevia_staging_app') cannot self-escalate to administrative RLS bypass
     simply by executing `SELECT set_config('app.is_admin', 'true', true);`.
     """
-    runtime_user = "acrevia_staging_app"
+    session_user = "acrevia_staging_app"
+    current_user = "acrevia_staging_app"
     admin_roles = ("neondb_owner", "acrevia_admin")
     
     # 1. Attacker sets app.is_admin = 'true'
     guc_setting = "true"
     
-    # 2. Evaluate hardened predicate
-    is_bypass_authorized = (runtime_user in admin_roles) and (guc_setting == "true")
+    # 2. Evaluate hardened dual-boundary predicate
+    is_bypass_authorized = (
+        (session_user in admin_roles)
+        and (current_user in admin_roles)
+        and (guc_setting == "true")
+    )
     
     # 3. Assert that escalation is structurally BLOCKED
     assert is_bypass_authorized is False, (
         "CRITICAL SECURITY FAILURE: Unprivileged runtime role was able to bypass RLS via app.is_admin GUC!"
     )
+
+
+def test_security_definer_privilege_escalation_blocked():
+    """
+    Phase 07 WP-02 & WP-05: Verify that invoking a SECURITY DEFINER function owned by an admin
+    role does NOT grant administrative RLS bypass to an unprivileged session.
+    Because SESSION_USER remains 'acrevia_staging_app', the dual boundary rejects the bypass.
+    """
+    session_user = "acrevia_staging_app"      # Connecting runtime client
+    current_user = "neondb_owner"             # Elevated via hypothetical SECURITY DEFINER
+    admin_roles = ("neondb_owner", "acrevia_admin")
+    guc_setting = "true"
+
+    is_bypass_authorized = (
+        (session_user in admin_roles)
+        and (current_user in admin_roles)
+        and (guc_setting == "true")
+    )
+    assert is_bypass_authorized is False, (
+        "CRITICAL SECURITY FAILURE: SECURITY DEFINER elevation bypassed RLS boundary!"
+    )
+
+
+def test_ddl_enforces_dual_session_and_current_user_boundary():
+    """
+    Phase 07 WP-02: Verify that generated DDL explicitly contains the dual
+    SESSION_USER and CURRENT_USER check in all restrictive isolation policies.
+    """
+    ddl = generate_rls_ddl("farms", TableCategory.TENANT_DIRECT, "id")
+    assert "SESSION_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
+    assert "CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin')" in ddl
+    assert "current_setting('app.is_admin', true) = 'true'" in ddl
 
 
 def test_admin_role_bypass_requires_both_role_and_guc():

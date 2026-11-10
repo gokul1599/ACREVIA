@@ -14,11 +14,15 @@ from backend.app.core.logging import logger
 
 
 # PostgreSQL administrative role whitelist for RLS bypass.
-# Unprivileged runtime roles (e.g. acrevia_staging_app) cannot self-escalate by simply
-# executing `SELECT set_config('app.is_admin', 'true', true)`.
+# Enforces dual boundary: both the authenticated session user (SESSION_USER)
+# and the effective execution context (CURRENT_USER) must be in the allowlist,
+# AND the transaction-scoped 'app.is_admin' GUC must be true.
+# This structurally eliminates privilege escalation via SECURITY DEFINER functions,
+# role-switching, or unprivileged GUC self-escalation by runtime roles (e.g. acrevia_staging_app).
 ADMIN_ROLES = ("neondb_owner", "acrevia_admin")
 ADMIN_BYPASS_SQL = (
-    "(CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') "
+    "(SESSION_USER::text IN ('neondb_owner', 'acrevia_admin') "
+    "AND CURRENT_USER::text IN ('neondb_owner', 'acrevia_admin') "
     "AND current_setting('app.is_admin', true) = 'true')"
 )
 
@@ -86,7 +90,7 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "diagnosis_requests": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "observations", "fk": "observation_id"},
     "predictions": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "diagnosis_requests", "fk": "diagnosis_request_id"},
     "prediction_candidates": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "predictions", "fk": "prediction_id"},
-    "expert_reviews": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "predictions", "fk": "prediction_id"},
+    "expert_reviews": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "diagnosis_requests", "fk": "diagnosis_request_id"},
     "expert_assessments": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "expert_review_cases", "fk": "case_id"},
     "expert_assessment_revisions": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "expert_assessments", "fk": "assessment_id"},
     "outcome_observations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "intervention_records", "fk": "intervention_id"},
@@ -96,7 +100,7 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "sensor_measurements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "sensor_calibrations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "sensor_devices", "fk": "device_id"},
     "satellite_observations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
-    "fusion_explanations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "observations", "fk": "observation_id"},
+    "fusion_explanations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "yield_forecast_records": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "harvest_measurements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "twin_state_records": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "twin_snapshots", "fk": "snapshot_id"},
@@ -107,10 +111,9 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "financial_corrections": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "farm_expenses", "fk": "expense_id"},
     "sale_transactions": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_lots", "fk": "lot_id"},
     "harvest_plans": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
-    "harvest_sessions": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "harvest_plans", "fk": "plan_id"},
+    "harvest_sessions": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "harvest_plans", "fk": "harvest_plan_id"},
     "lot_movements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_lots", "fk": "lot_id"},
-    "produce_quality_profiles": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_lots", "fk": "lot_id"},
-    "quality_measurements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_quality_profiles", "fk": "profile_id"},
+    "quality_measurements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_lots", "fk": "lot_id"},
     "storage_lots": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "produce_lots", "fk": "lot_id"},
     "soil_profiles": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "soil_samples": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
@@ -120,15 +123,15 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "soil_moisture_observations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "climate_exposure_assessments": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "climate_adaptation_scenarios": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "climate_exposure_assessments", "fk": "assessment_id"},
-    "nutrient_assessments": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
-    "nutrient_expert_reviews": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "nutrient_assessments", "fk": "assessment_id"},
+    "nutrient_assessments": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "soil_test_results", "fk": "soil_test_result_id"},
+    "nutrient_expert_reviews": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "nutrient_assessments", "fk": "nutrient_assessment_id"},
     "farm_practice_records": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "soil_carbon_measurements": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "environmental_accounting_estimates": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
     "resilience_assessments": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
-    "resilience_scenario_simulations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "resilience_assessments", "fk": "resilience_assessment_id"},
+    "resilience_scenario_simulations": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "resilience_assessments", "fk": "assessment_id"},
     "decision_records": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "plots", "fk": "plot_id"},
-    "decision_feedbacks": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "decision_records", "fk": "decision_record_id"},
+    "decision_feedbacks": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "decision_records", "fk": "decision_id"},
     "api_credentials": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "api_applications", "fk": "application_id"},
     "webhook_deliveries": {"category": TableCategory.TENANT_INDIRECT, "parent_table": "webhook_endpoints", "fk": "endpoint_id"},
 
@@ -157,6 +160,7 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     "learning_resources": {"category": TableCategory.SHARED_REFERENCE},
     "training_events": {"category": TableCategory.SHARED_REFERENCE},
     "satellite_acquisitions": {"category": TableCategory.SHARED_REFERENCE},
+    "produce_quality_profiles": {"category": TableCategory.SHARED_REFERENCE},
 
     # 5. Community & Collaborative Hub (18 tables)
     "communities": {"category": TableCategory.COMMUNITY_COLLABORATIVE},
