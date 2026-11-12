@@ -35,6 +35,10 @@ class RegionalSignalCreate(BaseModel):
     evidences: Optional[List[dict]] = None
 
 
+class RegionalSignalRecoverRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500, description="Justification or evidence notes for signal recovery")
+
+
 class RegionalSignalResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

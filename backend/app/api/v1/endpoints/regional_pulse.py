@@ -13,8 +13,10 @@ from backend.app.models.user import User
 from backend.app.schemas.regional_pulse import (
     RegionalSignalCreate,
     RegionalSignalResponse,
+    RegionalSignalRecoverRequest,
 )
-from backend.app.security.dependencies import get_current_user
+from backend.app.security.dependencies import get_current_user, require_roles
+from backend.app.security.permissions import SystemRole
 from backend.app.services.regional_pulse_service import RegionalPulseService
 
 logger = logging.getLogger(__name__)
@@ -115,3 +117,39 @@ def get_signal(
     if not is_privileged:
         sig_data.evidences = []
     return sig_data
+
+
+@router.post("/signals/{signal_id}/recover", response_model=RegionalSignalResponse, status_code=status.HTTP_200_OK)
+def recover_signal(
+    signal_id: str,
+    payload: Optional[RegionalSignalRecoverRequest] = None,
+    current_user: User = Depends(require_roles(SystemRole.ADMIN.value, SystemRole.AGRICULTURAL_EXPERT.value)),
+    db: Session = Depends(get_db),
+):
+    """
+    Restores a previously suppressed regional signal post independent evidence validation.
+    Restricted strictly to server-authenticated 'ADMIN' and 'AGRICULTURAL_EXPERT' roles.
+    """
+    user_roles = [r.id for r in current_user.roles]
+    reason = payload.reason if payload else None
+
+    recovered = RegionalPulseService.recover_suppressed_signal(
+        db,
+        signal_id=signal_id,
+        actor_roles=user_roles,
+        actor_id=current_user.id,
+        reason=reason,
+    )
+
+    try:
+        db.commit()
+        db.refresh(recovered)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to commit regional signal recovery in recover_signal: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database transaction failure during regional signal recovery",
+        )
+
+    return RegionalSignalResponse.model_validate(recovered)

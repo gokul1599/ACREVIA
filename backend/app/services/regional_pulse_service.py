@@ -314,18 +314,31 @@ class RegionalPulseService:
             return False
 
     @staticmethod
-    def recover_suppressed_signal(db: Session, signal_id: str, actor_roles: list):
+    def recover_suppressed_signal(
+        db: Session,
+        signal_id: str,
+        actor_roles: list,
+        actor_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        client_ip: Optional[str] = None,
+    ) -> RegionalSignal:
         """
         Explicit administrative / expert recovery workflow (Policy B).
         Restores a previously suppressed signal if and only if:
         1. The actor possesses privileged authority ('ADMIN' or 'AGRICULTURAL_EXPERT').
         2. Fresh evidence revalidation proves verified distinct farms >= 3.
-        Sets validation_status to 'EXPERT_CONFIRMED' with an explicit audit trail.
+        3. Enforces semantic distinction:
+           - AGRICULTURAL_EXPERT -> 'EXPERT_CONFIRMED'
+           - ADMIN (non-expert)   -> 'ADMIN_CONFIRMED'
+        4. Replay protection: raises HTTP 409 Conflict if already recovered.
+        5. Atomically stages an append-only AuditLog record in the caller's session.
+        6. Strictly preserves outer transaction ownership: helper NEVER commits or rolls back.
         """
         from fastapi import HTTPException, status
         from backend.app.models.farm import Farm
         from backend.app.models.observation import Observation
         from backend.app.models.risk_alert import RiskAlert
+        from backend.app.services.audit_service import AuditService
 
         is_privileged = any(r in ("ADMIN", "AGRICULTURAL_EXPERT") for r in actor_roles)
         if not is_privileged:
@@ -334,9 +347,25 @@ class RegionalPulseService:
                 detail="Only ADMIN or AGRICULTURAL_EXPERT roles may recover a suppressed signal",
             )
 
-        signal = RegionalPulseService.get_signal(db, signal_id)
+        # Acquire row-level lock on signal to serialize concurrent recovery operations
+        # populate_existing=True ensures identity map is refreshed with latest database state
+        stmt = (
+            select(RegionalSignal)
+            .options(selectinload(RegionalSignal.evidences))
+            .where(RegionalSignal.id == signal_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        signal = db.scalars(stmt).first()
         if not signal:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regional signal not found")
+
+        # Replay / State Conflict Verification
+        if signal.validation_status in ("EXPERT_CONFIRMED", "ADMIN_CONFIRMED"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Signal is already recovered (current status: {signal.validation_status})",
+            )
 
         if signal.validation_status != "SUPPRESSED_INSUFFICIENT_PROVENANCE":
             raise HTTPException(
@@ -345,13 +374,72 @@ class RegionalPulseService:
             )
 
         verified_farms = set()
-        if signal.evidences:
-            for ev in signal.evidences:
+
+        # Deterministic relationship & evidence locking protocol:
+        # Level 1: RegionalSignal (locked FOR UPDATE above)
+        # Level 2: RegionalSignalEvidence association records locked FOR SHARE in ascending order
+        evidence_stmt = (
+            select(RegionalSignalEvidence)
+            .where(RegionalSignalEvidence.signal_id == signal_id)
+            .order_by(RegionalSignalEvidence.id.asc())
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        evidences = list(db.scalars(evidence_stmt).all())
+
+        if evidences:
+            # Level 3: Observation rows locked FOR SHARE in ascending order
+            # Level 4: RiskAlert rows locked FOR SHARE in ascending order
+            obs_ids = sorted({ev.evidence_reference_id for ev in evidences if ev.evidence_type == "OBSERVATION_REF"})
+            alert_ids = sorted({ev.evidence_reference_id for ev in evidences if ev.evidence_type in ("RISKCAST_ALERT", "RISK_ALERT")})
+
+            observations = {}
+            if obs_ids:
+                obs_stmt = (
+                    select(Observation)
+                    .where(Observation.id.in_(obs_ids))
+                    .order_by(Observation.id.asc())
+                    .with_for_update(read=True)
+                    .execution_options(populate_existing=True)
+                )
+                observations = {o.id: o for o in db.scalars(obs_stmt).all()}
+
+            alerts = {}
+            if alert_ids:
+                alert_stmt = (
+                    select(RiskAlert)
+                    .where(RiskAlert.id.in_(alert_ids))
+                    .order_by(RiskAlert.id.asc())
+                    .with_for_update(read=True)
+                    .execution_options(populate_existing=True)
+                )
+                alerts = {a.id: a for a in db.scalars(alert_stmt).all()}
+
+            # Level 5: Farm rows locked FOR SHARE in ascending order
+            farm_ids = sorted({
+                obs.farm_id for obs in observations.values() if obs and obs.farm_id
+            } | {
+                alert.farm_id for alert in alerts.values() if alert and alert.farm_id
+            })
+
+            farms = {}
+            if farm_ids:
+                farm_stmt = (
+                    select(Farm)
+                    .where(Farm.id.in_(farm_ids))
+                    .order_by(Farm.id.asc())
+                    .with_for_update(read=True)
+                    .execution_options(populate_existing=True)
+                )
+                farms = {f.id: f for f in db.scalars(farm_stmt).all()}
+
+            # Post-lock recalculated provenance using freshly locked, populated records
+            for ev in evidences:
                 if ev.evidence_type == "OBSERVATION_REF":
-                    obs = db.get(Observation, ev.evidence_reference_id)
+                    obs = observations.get(ev.evidence_reference_id)
                     if not obs or not obs.farm_id:
                         continue
-                    farm = db.get(Farm, obs.farm_id)
+                    farm = farms.get(obs.farm_id)
                     if not farm or farm.is_archived:
                         continue
                     if farm.district.strip().lower() != signal.district.strip().lower():
@@ -360,11 +448,12 @@ class RegionalPulseService:
                     if obs_date and (obs_date < signal.observed_start_date or obs_date > signal.observed_end_date):
                         continue
                     verified_farms.add(farm.id)
+
                 elif ev.evidence_type in ("RISKCAST_ALERT", "RISK_ALERT"):
-                    alert = db.get(RiskAlert, ev.evidence_reference_id)
+                    alert = alerts.get(ev.evidence_reference_id)
                     if not alert or not alert.farm_id:
                         continue
-                    farm = db.get(Farm, alert.farm_id)
+                    farm = farms.get(alert.farm_id)
                     if not farm or farm.is_archived:
                         continue
                     if farm.district.strip().lower() != signal.district.strip().lower():
@@ -383,6 +472,37 @@ class RegionalPulseService:
                 detail=f"Cannot recover signal: verified distinct farms ({current_count}) remains below threshold ({MINIMUM_DISTINCT_FARMS_THRESHOLD})",
             )
 
-        signal.validation_status = "EXPERT_CONFIRMED"
+        # Semantic distinction between AGRICULTURAL_EXPERT and ADMIN
+        previous_status = signal.validation_status
+        if "AGRICULTURAL_EXPERT" in actor_roles:
+            effective_role = "AGRICULTURAL_EXPERT"
+            new_status = "EXPERT_CONFIRMED"
+        else:
+            effective_role = "ADMIN"
+            new_status = "ADMIN_CONFIRMED"
+
+        signal.validation_status = new_status
         signal.is_outbreak_claim_suppressed = False
+
+        # Stage append-only AuditLog record atomically in current session
+        effective_actor_id = actor_id or f"system:{effective_role.lower()}"
+        AuditService.stage_activity(
+            db=db,
+            action="RECOVER_SUPPRESSED_SIGNAL",
+            resource_type="REGIONAL_SIGNAL",
+            resource_id=signal.id,
+            user_id=effective_actor_id,
+            ip_address=client_ip,
+            metadata={
+                "signal_id": signal.id,
+                "previous_status": previous_status,
+                "new_status": new_status,
+                "actor_role": effective_role,
+                "actor_id": effective_actor_id,
+                "verified_distinct_farms_count": current_count,
+                "reason": reason or "Explicit authorized recovery",
+                "recovered_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
         return signal

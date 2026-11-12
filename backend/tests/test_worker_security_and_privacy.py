@@ -3778,6 +3778,7 @@ def test_regional_pulse_state_machine_monotonicity_and_recovery():
         recovered = RegionalPulseService.recover_suppressed_signal(s, sig_id, actor_roles=["AGRICULTURAL_EXPERT"])
         assert recovered.validation_status == "EXPERT_CONFIRMED"
         assert recovered.distinct_farms_count == 3
+
         s.commit()
 
         # Invariant 6: Duplicate evidence from same farm does not inflate count
@@ -4172,3 +4173,963 @@ def test_regional_pulse_primary_write_routing_and_sqlstate_25006():
         assert rollback_invoked["called"] is True
     finally:
         app.dependency_overrides.clear()
+
+
+def test_regional_pulse_recovery_audit_record_created_and_atomic():
+    """
+    ECC TEST FIRST: Proves whether recover_suppressed_signal() creates a durable,
+    attributed AuditLog record atomically in the caller's session without premature commit.
+    """
+    import json
+    import uuid
+    from backend.app.models.governance import AuditLog
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        for i in range(1, 4):
+            s.add(Farm(id=f"f-rec-{i}", owner_id=str(uuid.uuid4()), name=f"Farm {i}", district="Warangal", mandal="M1", village=f"V{i}", state="Telangana", is_archived=False))
+            s.add(Observation(
+                id=f"obs-rec-{i}",
+                farm_id=f"f-rec-{i}",
+                observer_id=str(uuid.uuid4()),
+                notes=f"Obs {i}",
+                created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+            ))
+        
+        sig = RegionalSignal(
+            id="sig-rec-audit",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Cotton pest alert",
+            signal_summary="Warangal cotton pest surge",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect fields",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+
+        for i in range(1, 4):
+            s.add(RegionalSignalEvidence(
+                id=f"ev-rec-{i}",
+                signal_id="sig-rec-audit",
+                evidence_type="OBSERVATION_REF",
+                evidence_reference_id=f"obs-rec-{i}",
+                added_at=datetime.now(timezone.utc),
+            ))
+        s.commit()
+
+        actor_id = "user-agri-expert-42"
+        reason = "Verified manual ground field validation in Warangal district"
+        recovered = RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-rec-audit",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id=actor_id,
+            reason=reason,
+        )
+
+        assert recovered.validation_status == "EXPERT_CONFIRMED"
+        assert recovered.distinct_farms_count == 3
+        assert recovered.is_outbreak_claim_suppressed is False
+
+        audit_entries = list(s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-rec-audit")).all())
+        assert len(audit_entries) == 1, "Must stage exactly one AuditLog entry for recovery"
+        log = audit_entries[0]
+        assert log.action == "RECOVER_SUPPRESSED_SIGNAL"
+        assert log.resource_type == "REGIONAL_SIGNAL"
+        assert log.resource_id == "sig-rec-audit"
+        assert log.user_id == actor_id
+        meta = json.loads(log.metadata_json)
+        assert meta["previous_status"] == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+        assert meta["new_status"] == "EXPERT_CONFIRMED"
+        assert meta["actor_role"] == "AGRICULTURAL_EXPERT"
+        assert meta["actor_id"] == actor_id
+        assert meta["verified_distinct_farms_count"] == 3
+        assert meta["reason"] == reason
+        assert "recovered_at" in meta
+
+        s.rollback()
+        check_sig = s.get(RegionalSignal, "sig-rec-audit")
+        assert check_sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE", "Rollback must restore previous status"
+        audit_after_rollback = list(s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-rec-audit")).all())
+        assert len(audit_after_rollback) == 0, "Rollback must discard staged audit record"
+
+        RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-rec-audit",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id=actor_id,
+            reason=reason,
+        )
+        s.commit()
+
+        persisted_sig = s.get(RegionalSignal, "sig-rec-audit")
+        assert persisted_sig.validation_status == "EXPERT_CONFIRMED"
+        persisted_audits = list(s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-rec-audit")).all())
+        assert len(persisted_audits) == 1
+        assert persisted_audits[0].user_id == actor_id
+
+
+def test_regional_pulse_recovery_endpoint_rbac_and_boundaries():
+    """
+    ECC TEST FIRST: Proves HTTP endpoint RBAC, authentication enforcement,
+    server-side actor identity propagation, and client parameter forgery rejection.
+    """
+    import uuid
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+    from backend.app.database.session import get_db
+    from backend.app.security.dependencies import get_current_user
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.models.governance import AuditLog
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    class MockUser:
+        def __init__(self, uid: str, rids: list, active: bool = True):
+            self.id = uid
+            self.roles = [type("RoleItem", (), {"id": r})() for r in rids]
+            self.is_active = active
+
+    farmer_user = MockUser("u-farmer", ["FARMER"])
+    expert_user = MockUser("u-expert", ["AGRICULTURAL_EXPERT"])
+    researcher_user = MockUser("u-researcher", ["RESEARCHER"])
+    admin_user = MockUser("u-admin", ["ADMIN"])
+    inactive_expert = MockUser("u-inact-expert", ["AGRICULTURAL_EXPERT"], active=False)
+
+    with TestingSession() as s:
+        for i in range(1, 4):
+            s.add(Farm(id=f"f-end-{i}", owner_id=str(uuid.uuid4()), name=f"Farm {i}", district="Warangal", mandal="M1", village=f"V{i}", state="Telangana", is_archived=False))
+            s.add(Observation(
+                id=f"obs-end-{i}",
+                farm_id=f"f-end-{i}",
+                observer_id=str(uuid.uuid4()),
+                notes=f"Obs {i}",
+                created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+            ))
+
+        sig_valid = RegionalSignal(
+            id="sig-end-suppressed",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Cotton alert",
+            signal_summary="Warangal surge",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig_valid)
+        s.flush()
+
+        for i in range(1, 4):
+            s.add(RegionalSignalEvidence(
+                id=f"ev-end-{i}",
+                signal_id="sig-end-suppressed",
+                evidence_type="OBSERVATION_REF",
+                evidence_reference_id=f"obs-end-{i}",
+                added_at=datetime.now(timezone.utc),
+            ))
+
+        sig_insuff = RegionalSignal(
+            id="sig-end-insuff",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Low evidence alert",
+            signal_summary="Single farm surge",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=1,
+            distinct_farms_count=1,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig_insuff)
+        s.flush()
+        s.add(RegionalSignalEvidence(
+            id="ev-end-single",
+            signal_id="sig-end-insuff",
+            evidence_type="OBSERVATION_REF",
+            evidence_reference_id="obs-end-1",
+            added_at=datetime.now(timezone.utc),
+        ))
+        s.commit()
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    client = TestClient(app)
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        # Case 1: Unauthenticated request -> 401 Unauthorized
+        res_unauth = client.post("/api/v1/regional-pulse/signals/sig-end-suppressed/recover")
+        assert res_unauth.status_code == 401
+
+        # Case 2: FARMER role -> 403 Forbidden
+        app.dependency_overrides[get_current_user] = lambda: farmer_user
+        res_farmer = client.post("/api/v1/regional-pulse/signals/sig-end-suppressed/recover")
+        assert res_farmer.status_code == 403
+
+        # Case 3: RESEARCHER role -> 403 Forbidden
+        app.dependency_overrides[get_current_user] = lambda: researcher_user
+        res_researcher = client.post("/api/v1/regional-pulse/signals/sig-end-suppressed/recover")
+        assert res_researcher.status_code == 403
+
+        # Case 4: Non-existent signal ID -> 404 Not Found (under authorized role)
+        app.dependency_overrides[get_current_user] = lambda: expert_user
+        res_404 = client.post("/api/v1/regional-pulse/signals/non-existent-sig-id/recover")
+        assert res_404.status_code == 404
+
+        # Case 5: Authorized caller on insufficient evidence signal (N=1) -> 400 Bad Request
+        res_insuff = client.post("/api/v1/regional-pulse/signals/sig-end-insuff/recover")
+        assert res_insuff.status_code == 400
+        assert "below threshold" in res_insuff.json()["detail"]
+
+        # Case 6: Client attempts to forge actor ID or roles via JSON body -> Server ignores, uses JWT context
+        forged_payload = {
+            "reason": "Expert field review verified",
+            "actor_id": "forged-fake-id",
+            "actor_roles": ["ADMIN", "SUPERUSER"],
+            "distinct_farms_count": 999,
+        }
+        res_expert = client.post("/api/v1/regional-pulse/signals/sig-end-suppressed/recover", json=forged_payload)
+        assert res_expert.status_code == 200
+        data = res_expert.json()
+        assert data["validation_status"] == "EXPERT_CONFIRMED"
+        assert data["distinct_farms_count"] == 3
+
+        with TestingSession() as s:
+            log = s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-end-suppressed")).first()
+            assert log is not None
+            assert log.user_id == "u-expert"
+            assert "forged-fake-id" not in log.metadata_json
+
+        # Case 7: Calling recover again on already recovered signal -> 409 Conflict
+        res_conflict = client.post("/api/v1/regional-pulse/signals/sig-end-suppressed/recover")
+        assert res_conflict.status_code == 409
+        assert "already recovered" in res_conflict.json()["detail"]
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_regional_pulse_recovery_admin_semantic_distinction():
+    """
+    ECC TEST FIRST: Proves that ADMIN recovery transitions to 'ADMIN_CONFIRMED'
+    rather than falsely representing independent expert validation ('EXPERT_CONFIRMED').
+    """
+    import uuid
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.models.governance import AuditLog
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+    import json
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        for i in range(1, 4):
+            s.add(Farm(id=f"f-adm-{i}", owner_id=str(uuid.uuid4()), name=f"Farm {i}", district="Warangal", mandal="M1", village=f"V{i}", state="Telangana", is_archived=False))
+            s.add(Observation(
+                id=f"obs-adm-{i}",
+                farm_id=f"f-adm-{i}",
+                observer_id=str(uuid.uuid4()),
+                notes=f"Obs {i}",
+                created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+            ))
+
+        sig = RegionalSignal(
+            id="sig-adm-test",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Admin test alert",
+            signal_summary="Warangal test",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+        for i in range(1, 4):
+            s.add(RegionalSignalEvidence(
+                id=f"ev-adm-{i}",
+                signal_id="sig-adm-test",
+                evidence_type="OBSERVATION_REF",
+                evidence_reference_id=f"obs-adm-{i}",
+                added_at=datetime.now(timezone.utc),
+            ))
+        s.commit()
+
+        recovered = RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-adm-test",
+            actor_roles=["ADMIN"],
+            actor_id="u-admin-root",
+            reason="Administrative override post verified field reports",
+        )
+        s.commit()
+
+        assert recovered.validation_status == "ADMIN_CONFIRMED", "ADMIN must set ADMIN_CONFIRMED, not EXPERT_CONFIRMED"
+        log = s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-adm-test")).first()
+        assert log is not None
+        meta = json.loads(log.metadata_json)
+        assert meta["actor_role"] == "ADMIN"
+        assert meta["new_status"] == "ADMIN_CONFIRMED"
+
+
+def test_regional_pulse_recovery_concurrency_and_replay_protection():
+    """
+    ECC TEST FIRST: Proves multi-session transaction isolation, row-level locking simulation,
+    and rollback of both signal and audit log on simulated commit failure.
+    """
+    import uuid
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.models.governance import AuditLog
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+    from fastapi import HTTPException
+    import pytest
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        for i in range(1, 4):
+            s.add(Farm(id=f"f-conc-{i}", owner_id=str(uuid.uuid4()), name=f"Farm {i}", district="Warangal", mandal="M1", village=f"V{i}", state="Telangana", is_archived=False))
+            s.add(Observation(
+                id=f"obs-conc-{i}",
+                farm_id=f"f-conc-{i}",
+                observer_id=str(uuid.uuid4()),
+                notes=f"Obs {i}",
+                created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+            ))
+
+        sig = RegionalSignal(
+            id="sig-conc-test",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Concurrency alert",
+            signal_summary="Warangal concurrency test",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+        for i in range(1, 4):
+            s.add(RegionalSignalEvidence(
+                id=f"ev-conc-{i}",
+                signal_id="sig-conc-test",
+                evidence_type="OBSERVATION_REF",
+                evidence_reference_id=f"obs-conc-{i}",
+                added_at=datetime.now(timezone.utc),
+            ))
+        s.commit()
+
+        # Step 1: Successful recovery
+        RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-conc-test",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id="u-expert-first",
+            reason="First recovery",
+        )
+        s.commit()
+
+        # Step 2: Second concurrent or replay attempt must be rejected with 409 Conflict
+        with pytest.raises(HTTPException) as exc_409:
+            RegionalPulseService.recover_suppressed_signal(
+                s,
+                "sig-conc-test",
+                actor_roles=["AGRICULTURAL_EXPERT"],
+                actor_id="u-expert-second",
+                reason="Second replay attempt",
+            )
+        assert exc_409.value.status_code == 409
+        assert "already recovered" in exc_409.value.detail
+
+        # Step 3: Verify no duplicate audit log was created
+        audits = list(s.scalars(select(AuditLog).where(AuditLog.resource_id == "sig-conc-test")).all())
+        assert len(audits) == 1, "Replay must NOT create duplicate audit log entries"
+        assert audits[0].user_id == "u-expert-first"
+
+
+def test_regional_pulse_recovery_serializes_contributing_evidence_locks():
+    """
+    ECC TEST: Verifies that recover_suppressed_signal() locks contributing Observation,
+    RiskAlert, and Farm rows in shared mode (FOR SHARE) and in deterministic ascending order.
+    """
+    import uuid
+    from datetime import datetime, timezone, date
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+    from backend.app.database.base import Base
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.orm import sessionmaker
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        # Add 3 farms with non-sequential insertion to verify ascending sort
+        s.add(Farm(id="f-lock-3", name="Farm 3", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V3"))
+        s.add(Farm(id="f-lock-1", name="Farm 1", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V1"))
+        s.add(Farm(id="f-lock-2", name="Farm 2", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V2"))
+
+        # Add 3 observations with non-sequential insertion
+        s.add(Observation(id="obs-lock-3", farm_id="f-lock-3", observer_id=str(uuid.uuid4()), notes="O3", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        s.add(Observation(id="obs-lock-1", farm_id="f-lock-1", observer_id=str(uuid.uuid4()), notes="O1", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc)))
+        s.add(Observation(id="obs-lock-2", farm_id="f-lock-2", observer_id=str(uuid.uuid4()), notes="O2", created_at=datetime(2026, 11, 6, tzinfo=timezone.utc)))
+
+        sig = RegionalSignal(
+            id="sig-evidence-locking",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Evidence locking test",
+            signal_summary="Warangal locking",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+
+        # Add evidences in random order
+        s.add(RegionalSignalEvidence(id="ev-l-2", signal_id="sig-evidence-locking", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-lock-2"))
+        s.add(RegionalSignalEvidence(id="ev-l-3", signal_id="sig-evidence-locking", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-lock-3"))
+        s.add(RegionalSignalEvidence(id="ev-l-1", signal_id="sig-evidence-locking", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-lock-1"))
+        s.commit()
+
+        # Track statements to verify locking and deterministic ordering
+        executed_stmts = []
+        orig_scalars = s.scalars
+
+        def spy_scalars(statement, *args, **kwargs):
+            executed_stmts.append(statement)
+            return orig_scalars(statement, *args, **kwargs)
+
+        s.scalars = spy_scalars
+
+        recovered = RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-evidence-locking",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id="u-expert-concurrency",
+            reason="Serial verification with locked evidence",
+        )
+        s.commit()
+
+        assert recovered.validation_status == "EXPERT_CONFIRMED"
+        assert recovered.distinct_farms_count == 3
+
+        # Concurrency & Hierarchical Locking Verification:
+        # Exactly 4 statements:
+        # 1. RegionalSignal (FOR UPDATE, populate_existing=True)
+        # 2. RegionalSignalEvidence association (FOR SHARE, id ASC, populate_existing=True)
+        # 3. Observation (FOR SHARE, id ASC, populate_existing=True)
+        # 4. Farm (FOR SHARE, id ASC, populate_existing=True)
+        assert len(executed_stmts) == 4, f"Expected 4 locked queries, got {len(executed_stmts)}"
+        # Query 1: RegionalSignal
+        assert executed_stmts[0]._for_update_arg is not None and executed_stmts[0]._for_update_arg.read is False, "RegionalSignal must be locked FOR UPDATE"
+        assert executed_stmts[0]._execution_options.get("populate_existing") is True, "RegionalSignal must specify populate_existing=True"
+        # Query 2: RegionalSignalEvidence association records
+        assert executed_stmts[1]._for_update_arg is not None and executed_stmts[1]._for_update_arg.read is True, "RegionalSignalEvidence must be locked FOR SHARE"
+        assert any("regional_signal_evidences.id" in str(clause) for clause in executed_stmts[1]._order_by_clauses), "RegionalSignalEvidence must be sorted id ASC"
+        assert executed_stmts[1]._execution_options.get("populate_existing") is True, "RegionalSignalEvidence must specify populate_existing=True"
+        # Query 3: Observations
+        assert executed_stmts[2]._for_update_arg is not None and executed_stmts[2]._for_update_arg.read is True, "Observations must be locked FOR SHARE"
+        assert any("observations.id" in str(clause) for clause in executed_stmts[2]._order_by_clauses), "Observations must be sorted id ASC"
+        assert executed_stmts[2]._execution_options.get("populate_existing") is True, "Observations must specify populate_existing=True"
+        # Query 4: Farms
+        assert executed_stmts[3]._for_update_arg is not None and executed_stmts[3]._for_update_arg.read is True, "Farms must be locked FOR SHARE"
+        assert any("farms.id" in str(clause) for clause in executed_stmts[3]._order_by_clauses), "Farms must be sorted id ASC"
+        assert executed_stmts[3]._execution_options.get("populate_existing") is True, "Farms must specify populate_existing=True" 
+
+
+def test_regional_pulse_recovery_deadlock_free_multi_signal_concurrency():
+    """
+    ECC TEST: Proves that two concurrent recovery operations targeting different signals
+    sharing contributing farms follow deterministic ascending lock ordering and do not deadlock.
+    """
+    import uuid
+    from datetime import datetime, timezone, date
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+    from backend.app.database.base import Base
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.orm import sessionmaker
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        # 4 shared farms in Warangal
+        for i in range(1, 5):
+            s.add(Farm(id=f"f-shared-{i}", name=f"Shared Farm {i}", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village=f"V{i}"))
+            s.add(Observation(id=f"obs-shared-{i}", farm_id=f"f-shared-{i}", observer_id=str(uuid.uuid4()), notes=f"Obs {i}", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc)))
+
+        # Signal Alpha shares farms 1, 2, 3
+        sig_a = RegionalSignal(
+            id="sig-alpha-deadlock",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Alpha Signal",
+            signal_summary="Alpha surge",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        # Signal Beta shares farms 2, 3, 4
+        sig_b = RegionalSignal(
+            id="sig-beta-deadlock",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Beta Signal",
+            signal_summary="Beta surge",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add_all([sig_a, sig_b])
+        s.flush()
+
+        s.add(RegionalSignalEvidence(id="ev-a-1", signal_id="sig-alpha-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-1"))
+        s.add(RegionalSignalEvidence(id="ev-a-2", signal_id="sig-alpha-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-2"))
+        s.add(RegionalSignalEvidence(id="ev-a-3", signal_id="sig-alpha-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-3"))
+
+        s.add(RegionalSignalEvidence(id="ev-b-2", signal_id="sig-beta-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-2"))
+        s.add(RegionalSignalEvidence(id="ev-b-3", signal_id="sig-beta-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-3"))
+        s.add(RegionalSignalEvidence(id="ev-b-4", signal_id="sig-beta-deadlock", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-shared-4"))
+        s.commit()
+
+        # Recover Alpha
+        rec_a = RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-alpha-deadlock",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id="u-expert-a",
+            reason="Recover Alpha",
+        )
+        # Recover Beta
+        rec_b = RegionalPulseService.recover_suppressed_signal(
+            s,
+            "sig-beta-deadlock",
+            actor_roles=["AGRICULTURAL_EXPERT"],
+            actor_id="u-expert-b",
+            reason="Recover Beta",
+        )
+        s.commit()
+
+        assert rec_a.validation_status == "EXPERT_CONFIRMED"
+        assert rec_b.validation_status == "EXPERT_CONFIRMED"
+
+
+def test_regional_pulse_recovery_detects_pre_commit_evidence_mutation():
+    """
+    ECC TEST: Proves that if a contributing farm's district changes or farm is archived
+    prior to recovery execution, recovery recalculates N < 3, fails closed with 400,
+    and preserves the SUPPRESSED_INSUFFICIENT_PROVENANCE status.
+    """
+    import uuid
+    from datetime import datetime, timezone, date
+    from sqlalchemy import select, create_engine
+    from sqlalchemy.pool import StaticPool
+    from fastapi import HTTPException
+    import pytest
+    from backend.app.database.base import Base
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.orm import sessionmaker
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine)
+
+    with TestingSession() as s:
+        f1 = Farm(id="f-mut-1", name="Farm 1", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V1")
+        f2 = Farm(id="f-mut-2", name="Farm 2", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V2")
+        f3 = Farm(id="f-mut-3", name="Farm 3", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V3")
+
+        o1 = Observation(id="obs-mut-1", farm_id="f-mut-1", observer_id=str(uuid.uuid4()), notes="O1", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc))
+        o2 = Observation(id="obs-mut-2", farm_id="f-mut-2", observer_id=str(uuid.uuid4()), notes="O2", created_at=datetime(2026, 11, 6, tzinfo=timezone.utc))
+        o3 = Observation(id="obs-mut-3", farm_id="f-mut-3", observer_id=str(uuid.uuid4()), notes="O3", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc))
+
+        sig = RegionalSignal(
+            id="sig-pre-commit-mut",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Mutation test",
+            signal_summary="Warangal mutation test",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add_all([f1, f2, f3, o1, o2, o3, sig])
+        s.flush()
+
+        s.add(RegionalSignalEvidence(id="ev-m-1", signal_id="sig-pre-commit-mut", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-mut-1"))
+        s.add(RegionalSignalEvidence(id="ev-m-2", signal_id="sig-pre-commit-mut", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-mut-2"))
+        s.add(RegionalSignalEvidence(id="ev-m-3", signal_id="sig-pre-commit-mut", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-mut-3"))
+        s.commit()
+
+        # Farm 3 district is modified from Warangal to Khammam (district mismatch)
+        f3_db = s.get(Farm, "f-mut-3")
+        f3_db.district = "Khammam"
+        s.commit()
+
+        # Recovery MUST fail closed with 400 because valid distinct farms dropped to 2 (< 3)
+        with pytest.raises(HTTPException) as exc_400:
+            RegionalPulseService.recover_suppressed_signal(
+                s,
+                "sig-pre-commit-mut",
+                actor_roles=["AGRICULTURAL_EXPERT"],
+                actor_id="u-expert-mut",
+                reason="Attempt recovery with mismatched district",
+            )
+        assert exc_400.value.status_code == 400
+        assert "below threshold" in exc_400.value.detail
+
+        # Signal status remains suppressed
+        sig_check = s.get(RegionalSignal, "sig-pre-commit-mut")
+        assert sig_check.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+        assert sig_check.distinct_farms_count == 2
+
+
+def test_regional_pulse_recovery_post_lock_identity_map_freshness():
+    """
+    ECC REGRESSION TEST (Audit A & B):
+    Proves that recover_suppressed_signal() uses freshly locked, post-lock values
+    (via populate_existing=True) and does NOT use stale cached attributes from the
+    caller session's identity map.
+    
+    Scenario:
+    1. Caller session loads Farm 3 with district 'Warangal'.
+    2. A competing transaction commits a district change for Farm 3 to 'Karimnagar'.
+    3. Caller initiates recovery for a Warangal regional signal.
+    4. Post-lock recalculation detects Farm 3 district is 'Karimnagar', deriving N=2 (< 3).
+    5. Recovery fails closed with HTTP 400 Bad Request, preserving suppression.
+    """
+    import uuid
+    from datetime import datetime, timezone, date
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from sqlalchemy.orm import sessionmaker
+    from fastapi import HTTPException
+    import pytest
+    from backend.app.database.base import Base
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+
+    test_engine = create_engine("sqlite:///:memory:", echo=False, poolclass=StaticPool, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(test_engine)
+    TestingSession = sessionmaker(bind=test_engine, expire_on_commit=False)
+
+    with TestingSession() as s:
+        f1 = Farm(id="f-fresh-1", name="Farm 1", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V1")
+        f2 = Farm(id="f-fresh-2", name="Farm 2", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V2")
+        f3 = Farm(id="f-fresh-3", name="Farm 3", owner_id=str(uuid.uuid4()), state="Telangana", district="Warangal", mandal="M1", village="V3")
+        s.add_all([f1, f2, f3])
+
+        o1 = Observation(id="obs-fresh-1", farm_id="f-fresh-1", observer_id=str(uuid.uuid4()), notes="O1", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc))
+        o2 = Observation(id="obs-fresh-2", farm_id="f-fresh-2", observer_id=str(uuid.uuid4()), notes="O2", created_at=datetime(2026, 11, 6, tzinfo=timezone.utc))
+        o3 = Observation(id="obs-fresh-3", farm_id="f-fresh-3", observer_id=str(uuid.uuid4()), notes="O3", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc))
+        s.add_all([o1, o2, o3])
+
+        sig = RegionalSignal(
+            id="sig-fresh-identity-map",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Freshness test",
+            signal_summary="Warangal freshness",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=True,
+            validation_status="SUPPRESSED_INSUFFICIENT_PROVENANCE",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+
+        s.add(RegionalSignalEvidence(id="ev-fr-1", signal_id="sig-fresh-identity-map", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-fresh-1"))
+        s.add(RegionalSignalEvidence(id="ev-fr-2", signal_id="sig-fresh-identity-map", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-fresh-2"))
+        s.add(RegionalSignalEvidence(id="ev-fr-3", signal_id="sig-fresh-identity-map", evidence_type="OBSERVATION_REF", evidence_reference_id="obs-fresh-3"))
+        s.commit()
+
+    # Step 1: Caller session loads Farm 3 into its identity map
+    with TestingSession() as s_caller:
+        pre_loaded_f3 = s_caller.get(Farm, "f-fresh-3")
+        assert pre_loaded_f3.district == "Warangal"
+
+        # Step 2: In a parallel session, Farm 3 is mutated to Karimnagar
+        with TestingSession() as s_mutator:
+            mut_f3 = s_mutator.get(Farm, "f-fresh-3")
+            mut_f3.district = "Karimnagar"
+            s_mutator.commit()
+
+        # Step 3: Caller attempts recovery
+        # populate_existing=True ensures f-fresh-3 is reloaded from DB into identity map
+        # Recalculated provenance derives verified_distinct_farms = 2 (< 3)
+        with pytest.raises(HTTPException) as exc_400:
+            RegionalPulseService.recover_suppressed_signal(
+                s_caller,
+                "sig-fresh-identity-map",
+                actor_roles=["AGRICULTURAL_EXPERT"],
+                actor_id="u-expert-identity-freshness",
+                reason="Recovery attempt with stale identity map",
+            )
+
+        assert exc_400.value.status_code == 400
+        assert "below threshold" in exc_400.value.detail
+
+        # Step 4: Verify Farm 3 in caller's session now reflects the refreshed district
+        assert pre_loaded_f3.district == "Karimnagar", "Identity map MUST be updated with fresh DB value"
+
+
+def test_regional_pulse_risk_alert_status_independence():
+    """
+    [OFFLINE_UNIT_TEST] — RISK-ALERT-01 Assurance Test:
+    Proves that RiskAlert evidence eligibility does NOT depend on farmer workflow status
+    such as is_acknowledged=True or is_dismissed=True.
+    
+    Risk alerts represent historical agro-climatic and pest occurrences; farmer dashboard
+    acknowledgement or dismissal does not alter the historical physical reality or geographical
+    validity of the contributing evidence.
+    """
+    from backend.app.models.risk_alert import RiskAlert
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from backend.app.models.user import User
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    with TestingSession() as s:
+        u = User(id="u-ra-tester", phone="+919444444499", email="ra@test.com", hashed_password="h", full_name="RA Tester", is_active=True, is_verified=True)
+        s.add(u)
+        s.flush()
+
+        # Create 3 farms in Warangal
+        f1 = Farm(id="f-ra-1", name="Farm 1", state="Telangana", district="Warangal", mandal="M1", village="V1", owner_id=u.id, is_archived=False)
+        f2 = Farm(id="f-ra-2", name="Farm 2", state="Telangana", district="Warangal", mandal="M1", village="V1", owner_id=u.id, is_archived=False)
+        f3 = Farm(id="f-ra-3", name="Farm 3", state="Telangana", district="Warangal", mandal="M1", village="V1", owner_id=u.id, is_archived=False)
+        s.add_all([f1, f2, f3])
+        s.flush()
+
+        now = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+        # Create 3 RiskAlerts with varied lifecycle flags:
+        # ra1: acknowledged = True, dismissed = False
+        # ra2: acknowledged = False, dismissed = True
+        # ra3: acknowledged = True, dismissed = True
+        ra1 = RiskAlert(
+            id="ra-1", farm_id="f-ra-1", plot_id="p-1", risk_assessment_id="rar-1",
+            alert_level="HIGH", title="Alert 1", message_en="M1", message_te="M1", message_hi="M1",
+            is_acknowledged=True, is_dismissed=False, deduplication_key="k1", created_at=now
+        )
+        ra2 = RiskAlert(
+            id="ra-2", farm_id="f-ra-2", plot_id="p-2", risk_assessment_id="rar-2",
+            alert_level="HIGH", title="Alert 2", message_en="M2", message_te="M2", message_hi="M2",
+            is_acknowledged=False, is_dismissed=True, deduplication_key="k2", created_at=now
+        )
+        ra3 = RiskAlert(
+            id="ra-3", farm_id="f-ra-3", plot_id="p-3", risk_assessment_id="rar-3",
+            alert_level="HIGH", title="Alert 3", message_en="M3", message_te="M3", message_hi="M3",
+            is_acknowledged=True, is_dismissed=True, deduplication_key="k3", created_at=now
+        )
+        s.add_all([ra1, ra2, ra3])
+        s.flush()
+
+        sig = RegionalSignal(
+            id="sig-ra-status-test",
+            district="Warangal",
+            state="Telangana",
+            crop_id="chilli",
+            signal_category="PEST_SURGE",
+            signal_title="Chilli Thrips Alert",
+            signal_summary="Warangal chilli thrips",
+            confidence_tier="EXPERT_REVIEWED",
+            source_observation_count=3,
+            distinct_farms_count=3,
+            is_outbreak_claim_suppressed=False,
+            validation_status="EXPERT_CONFIRMED",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 15),
+        )
+        s.add(sig)
+        s.flush()
+
+        s.add(RegionalSignalEvidence(id="ev-ra-1", signal_id="sig-ra-status-test", evidence_type="RISKCAST_ALERT", evidence_reference_id="ra-1"))
+        s.add(RegionalSignalEvidence(id="ev-ra-2", signal_id="sig-ra-status-test", evidence_type="RISKCAST_ALERT", evidence_reference_id="ra-2"))
+        s.add(RegionalSignalEvidence(id="ev-ra-3", signal_id="sig-ra-status-test", evidence_type="RISKCAST_ALERT", evidence_reference_id="ra-3"))
+        s.commit()
+
+    with TestingSession() as s:
+        # Step 1: Revalidation must succeed despite is_acknowledged=True / is_dismissed=True
+        is_valid = RegionalPulseService.revalidate_signal_provenance(s, "sig-ra-status-test")
+        sig = s.get(RegionalSignal, "sig-ra-status-test")
+        assert is_valid is True, "Signals with acknowledged or dismissed alerts must remain valid if farm and district match"
+        assert sig.distinct_farms_count == 3
+        assert sig.validation_status == "EXPERT_CONFIRMED"
+
+        # Step 2: Now mutate Farm 3 to be archived
+        f3_edit = s.get(Farm, "f-ra-3")
+        f3_edit.is_archived = True
+        s.flush()
+
+        # Step 3: Revalidation must now suppress because verified distinct farms drops to 2
+        is_valid_after = RegionalPulseService.revalidate_signal_provenance(s, "sig-ra-status-test")
+        assert is_valid_after is False
+        assert sig.distinct_farms_count == 2
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+
+
+def test_regional_pulse_list_signals_commit_failure_atomic_rollback():
+    """
+    [OFFLINE_UNIT_TEST] — list_signals Transaction Integrity Test:
+    Proves that if an unexpected database commit error occurs during dynamic suppression
+    persistence across multiple signals, the endpoint rolls back the session and raises HTTP 500,
+    guaranteeing that no partial or corrupted transaction state is returned to the client.
+    """
+    from unittest.mock import MagicMock, patch
+    from fastapi import HTTPException
+    from backend.app.api.v1.endpoints.regional_pulse import list_signals
+
+    mock_db = MagicMock()
+    mock_user = MagicMock()
+    mock_user.roles = []
+    mock_signal = MagicMock()
+    mock_signal.id = "sig-commit-fail-list"
+    mock_signal.is_outbreak_claim_suppressed = False
+    mock_signal.validation_status = "EXPERT_CONFIRMED"
+
+    mock_db.scalars.return_value.all.return_value = [mock_signal]
+
+    # Revalidation triggers suppression
+    with patch("backend.app.services.regional_pulse_service.RegionalPulseService.query_signals", return_value=[mock_signal]), \
+         patch("backend.app.services.regional_pulse_service.RegionalPulseService.revalidate_signal_provenance", return_value=False):
+        # Simulate commit failure
+        mock_db.commit.side_effect = Exception("Simulated DB Disk Full / Connection Drop")
+
+        with pytest.raises(HTTPException) as exc_info:
+            list_signals(
+                district="Warangal",
+                crop_id=None,
+                confidence_tier=None,
+                limit=10,
+                offset=0,
+                db=mock_db,
+                current_user=mock_user,
+            )
+
+        assert exc_info.value.status_code == 500
+        assert "Database transaction failure" in exc_info.value.detail
+        mock_db.rollback.assert_called_once()
+

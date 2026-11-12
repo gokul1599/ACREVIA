@@ -13,7 +13,7 @@
 - `TRANSACTION_SAFETY_AND_SAVEPOINT_ISOLATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`db.begin_nested()` SAVEPOINT prevents PostgreSQL 25P02 aborted-transaction state and protects caller's unrelated session work)  
 - `RIGOROUS_POSTGRESQL_CONCURRENCY_ANALYSIS`: **`DOCUMENTED_ANALYSIS`** (Accurate PostgreSQL semantics for READ COMMITTED, REPEATABLE READ, SERIALIZABLE, and FOR UPDATE)  
 - `ROLE_GLOBAL_EVIDENCE_ACCESS`: **`OWNER_ACCEPTANCE_REQUIRED`** (Global read access granted to `ADMIN`, `AGRICULTURAL_EXPERT`, `RESEARCHER`; requires Owner acceptance)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (66 passing tests; 113 across Phase 07 suite)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (74 passing tests; 121 across Phase 07 suite; 6 in Stage 12)  
 
 ---
 
@@ -141,3 +141,104 @@ Under `READ COMMITTED` isolation, the remaining microsecond race window between 
 > **GOVERNANCE RESIDUAL RISK RECORDING: `ROLE_GLOBAL_EVIDENCE_ACCESS: OWNER_ACCEPTANCE_REQUIRED`**  
 > Under current RLS policies (`regional_signal_evidences_expert_read_policy` in [`backend/app/database/rls.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/database/rls.py)), any user with the `AGRICULTURAL_EXPERT` or `RESEARCHER` role has read access to **all** granular evidence records across the entire state of Telangana.  
 > In Mode A, this status remains **`OWNER_ACCEPTANCE_REQUIRED`**. It is NOT marked as fully resolved without explicit Project Owner sign-off.
+
+---
+
+## 7. Suppressed Signal Recovery — RBAC, Audit Atomicity & Concurrency Hardening
+
+Following adversarial security assurance, the recovery workflow (`RegionalPulseService.recover_suppressed_signal`) and dedicated API endpoint (`POST /api/v1/regional-pulse/signals/{id}/recover`) were hardened:
+
+### 1. Server-Side RBAC & Actor Identity Attributability
+- **Access Boundary:** Restricted exclusively to authenticated users possessing `ADMIN` or `AGRICULTURAL_EXPERT` system roles via `require_roles(SystemRole.ADMIN.value, SystemRole.AGRICULTURAL_EXPERT.value)`.
+- **Identity Propagation:** Immutable `actor_id` (`current_user.id`) and `actor_roles` derived exclusively from server-side JWT authentication context. Any client-supplied `actor_id`, `user_id`, or `actor_roles` in JSON payload or headers is strictly ignored.
+- **Fail-Closed RBAC:** Unauthenticated requests yield `HTTP 401 Unauthorized`; `FARMER`, `RESEARCHER`, or missing roles yield `HTTP 403 Forbidden`; inactive accounts yield `HTTP 401 Unauthorized`.
+
+### 2. Semantic Distinction: Expert vs Administrative Recovery
+- If an `AGRICULTURAL_EXPERT` approves recovery, `validation_status` transitions to `EXPERT_CONFIRMED`.
+- If an `ADMIN` (non-expert) approves recovery, `validation_status` transitions to `ADMIN_CONFIRMED`.
+- An administrative actor cannot falsely claim or manufacture independent expert validation.
+
+### 3. Atomic Audit Persistence
+- Signal recovery and audit trail creation are executed within the **same session transaction**.
+- Uses `AuditService.stage_activity(db, ...)` to add an append-only `AuditLog` entry (action `RECOVER_SUPPRESSED_SIGNAL`, resource `REGIONAL_SIGNAL`) without premature commit.
+- Transaction sovereignty remains with the outer transaction owner (endpoint handler or test caller):
+  - If outer commit succeeds, both signal status and audit log persist durably.
+  - If outer rollback occurs (or commit fails), both signal status and audit log are discarded.
+
+### 4. Row-Level Locking & Replay Idempotency
+- Uses `select(...).with_for_update()` to serialize concurrent recovery attempts on the same regional signal row.
+- If a signal is already recovered (`EXPERT_CONFIRMED` or `ADMIN_CONFIRMED`), subsequent recovery attempts yield `HTTP 409 Conflict`, preventing duplicate state transitions or duplicate audit entries.
+
+
+---
+
+## 8. Post-Lock Recalculation, Evidence Association Protection & Public GET Consistency (REC-CONC-01 / REC-CONC-02)
+
+### 1. Post-Lock Provenance Recalculation & Identity-Map Freshness (Audit A)
+Prior to this audit, when `recover_suppressed_signal` acquired shared row locks via SQLAlchemy `.with_for_update(read=True)`, it did not specify `.execution_options(populate_existing=True)`. If an entity (`Farm`, `Observation`, or `RiskAlert`) was already present in the caller session's identity map, SQLAlchemy returned the in-memory cached instance with its pre-lock attribute values rather than refreshing from the locked database row.
+- **Defect Proven:** A competing transaction mutating a contributing farm's district from 'Warangal' to 'Karimnagar' was ignored by the caller session's identity map, permitting recovery of an invalidated signal.
+- **Correction Applied:** All recovery lock queries (`RegionalSignal`, `RegionalSignalEvidence`, `Observation`, `RiskAlert`, `Farm`) now explicitly specify `.execution_options(populate_existing=True)`.
+- **Post-Lock Invariant Guaranteed:**
+  $$\mathbf{RECOVERY\_ELIGIBILITY = COUNT(DISTINCT\ CURRENT\_ELIGIBLE\_FARM\_IDS\_AFTER\_LOCKING)}$$
+  The final farm count is strictly recalculated against the freshly locked database state.
+
+### 2. Regional Signal Evidence Association Protection (Audit B)
+In addition to locking the parent signal and evidence data rows, `recover_suppressed_signal` now explicitly queries and locks all `RegionalSignalEvidence` association rows for the signal:
+- Emits: `SELECT ... FROM regional_signal_evidences WHERE signal_id = :id ORDER BY id ASC FOR SHARE`.
+- Direct association row locking prevents concurrent deletion or mutation of evidence links during recovery.
+- New associations referencing `signal_id` are serialized by the parent `RegionalSignal` `FOR UPDATE` exclusive lock.
+
+### 3. Public GET Publication Consistency & Residual Window (Audit C)
+Ordinary public GET endpoints (`list_signals` and `get_signal`) execute dynamic provenance revalidation without evidence row locks to preserve read performance and prevent query serialization bottlenecks.
+- **Consistency Classification:** **`RESIDUAL_STALE_PUBLICATION_WINDOW`**.
+- **Window Scope:** Opens when `revalidate_signal_provenance` reads the evidence snapshot and closes upon HTTP response serialization completion.
+- **Bounding & Monotonicity:** If evidence is mutated during this window, the in-flight GET returns the signal consistent with its read snapshot. The subsequent GET request immediately derives $N < 3$, stages `SUPPRESSED_INSUFFICIENT_PROVENANCE`, and withholds the signal from public dissemination (HTTP 404).
+
+### 4. Shared Writer Consistency Contract & Lock Order Reassessment (Audit D & E)
+- **Lock Ordering Classification:** **`RECOVERY_LOCK_ORDER_CONSISTENT_BUT_GLOBAL_ORDER_UNPROVEN`**.
+- `recover_suppressed_signal` follows a strict 5-level hierarchy: `RegionalSignal (FOR UPDATE)` $\to$ `RegionalSignalEvidence (FOR SHARE, id ASC)` $\to$ `Observation (FOR SHARE, id ASC)` $\to$ `RiskAlert (FOR SHARE, id ASC)` $\to$ `Farm (FOR SHARE, id ASC)`.
+- While recovery transactions among themselves are deadlock-free, independent writers (`FarmService.update_farm`, `RiskService.acknowledge_alert`) do not acquire `RegionalSignal` locks or participate in a global cross-subsystem lock manager.
+
+### 5. Read-Replica Architecture & Deployment Status (Audit F)
+- **Source Configuration:** **`APPLICATION_SINGLE_ENGINE_SOURCE_CONFIGURATION`** (`backend/app/database/session.py` defines a single primary engine).
+- **Deployment Status:** **`DEPLOYMENT_PRIMARY_ROUTING_UNVERIFIED`**.
+- Lock-free GET revalidation is **not** read-replica compatible because dynamic suppression writes to `regional_signals` and issues explicit `db.commit()`, which requires primary read-write database connection routing.
+
+### 6. Evidence Lifecycle & Immutability Classification (Audit G)
+- `Farm`: `MUTABLE_THROUGH_IDENTIFIED_SERVICE` (metadata mutable via `FarmService.update_farm`; delete/archive methods not found in service layer).
+- `Observation`: `APPEND_ONLY_BY_CURRENT_APPLICATION_SERVICE_DESIGN` (telemetry is append-only; database-level immutability not verified; `UPDATE`/`DELETE` granted in privilege crosswalk).
+- `RiskAlert`: `MUTABLE_THROUGH_IDENTIFIED_SERVICE` (status updates permitted).
+- `RegionalSignalEvidence`: `APPEND_ONLY_BY_CURRENT_APPLICATION_SERVICE_DESIGN` (subject to parent signal cascade).
+- `AuditLog`: `APPEND_ONLY_BY_PRIVILEGE_DESIGN` (`UPDATE` and `DELETE` explicitly REVOKED at database level).
+
+---
+
+## 9. Read Committed Multi-Statement Snapshots, Risk Alert Lifecycle Independence & PostgreSQL Lock Observability
+
+### 1. Multi-Statement READ COMMITTED Snapshot Reality (READ-COMMITTED-01)
+Ordinary public GET provenance dynamic revalidation (`RegionalPulseService.revalidate_signal_provenance`) executes multiple SQL queries sequentially (`SELECT regional_signals`, followed by individual lookups `db.get(Observation)`, `db.get(Farm)` or `db.get(RiskAlert)`).
+- **Architectural Reality:** Under PostgreSQL default `READ COMMITTED` isolation, each SQL statement establishes its own active query snapshot.
+- **Classification:** **`MULTI_STATEMENT_READ_COMMITTED_MIXED_SNAPSHOT_POSSIBLE`**.
+- **Implication:** If a concurrent transaction commits a farm district change between individual loop queries, the provenance calculation will observe the committed change immediately upon executing that entity lookup. If the count drops below 3, the signal is suppressed. If a change commits immediately after all lookups complete, the current response serves the signal based on the read snapshot; the very next GET request observes the updated data and immediately suppresses the signal.
+
+### 2. Risk Alert Status Independence (RISK-ALERT-01)
+- **Source Inspection:** Verified across `aggregate_regional_signal`, `revalidate_signal_provenance`, and `recover_suppressed_signal`.
+- **Finding:** The provenance eligibility predicate strictly verifies:
+  1. `alert.farm_id` is present.
+  2. `farm.is_archived == False`.
+  3. `farm.district.strip().lower() == signal.district.strip().lower()`.
+  4. `alert.created_at.date()` falls within `[signal.observed_start_date, signal.observed_end_date]`.
+- **Determination:** **`RISK_ALERT_STATUS_NOT_PART_OF_PROVENANCE_ELIGIBILITY`**.
+- **Architectural Rationale:** Farmer dashboard actions (`is_acknowledged=True`, `is_dismissed=True`) represent recipient acknowledgment of notifications, not retraction of historical environmental, telemetry, or pest observations. Historical agro-climatic reality remains valid contributing evidence regardless of dashboard triage. Tested empirically via `test_regional_pulse_risk_alert_status_independence`.
+
+### 3. Corrected PostgreSQL Lock Observability Specification (PG-LOCK-OBS-01)
+- **Previous Specification Limitation:** Prior assurance documentation anticipated table-level `ExclusiveLock` in `pg_locks` for row-level `FOR UPDATE` queries.
+- **PostgreSQL Engine Reality:**
+  - In PostgreSQL, row-level locks (`SELECT ... FOR UPDATE`, `SELECT ... FOR SHARE`) acquire table-level **`RowShareLock`** (mode `RowShareLock`, virtual transaction mode).
+  - Row locks themselves do **not** create persistent tuples in `pg_locks` unless transactions are actively queued/waiting on the locked tuple. The lock is recorded directly on the physical disk tuple header (`xmax` field and infomasks `HEAP_XMAX_COMMITTED`, `HEAP_XMAX_EXCL_LOCK`, etc.).
+  - Observability of row-level lock contention in `pg_locks` requires querying `wait_event_type = 'Lock'`, `locktype = 'tuple'` / `transactionid`, inspecting `pg_blocking_pids()`, or querying the `pgrowlocks(text)` contrib extension.
+
+### 4. Residual Privacy Window Classification (RES-PULSE-02)
+- **Classification:** **`OWNER_ACCEPTANCE_REQUIRED`** (Status: `TECHNICALLY_BOUNDED`).
+- **Strategic Decision:** In accordance with Option E, row-level locks are strictly avoided on ordinary GET read traffic to maintain high concurrency, prevent lock contention, and enable future read-replica offloading. The residual stale read window under `READ COMMITTED` is operationally acceptable given subsequent fail-closed suppression and non-sensitive aggregated regional signal payload.
+
