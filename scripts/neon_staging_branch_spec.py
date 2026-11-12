@@ -123,6 +123,9 @@ def get_staging_branch_specification() -> Dict[str, Any]:
             "bypass_rls": False,
             "can_create_db": False,
             "can_create_role": False,
+            "can_truncate": False,
+            "can_references": False,
+            "can_trigger": False,
             "admin_role_membership": False,
             "status": "UNPROVISIONED_PENDING_GATE_02"
         },

@@ -245,7 +245,7 @@ TABLE_CLASSIFICATION: Dict[str, Dict[str, Any]] = {
     },
     "regional_signal_evidences": {
         "category": TableCategory.COMMUNITY_COLLABORATIVE,
-        "public_read": True,
+        "public_read": False,
     },
 }
 
@@ -906,13 +906,16 @@ CREATE POLICY {table_name}_child_isolation_policy ON {table_name}
         )
     )"""
             else:
+                # Evidence table: Restricted to Admin, Agricultural Expert, and Researcher to protect farmer anonymity
                 read_expr = f"""(
         {ADMIN_BYPASS_SQL}
-        OR EXISTS (
-            SELECT 1 FROM regional_signals rs
-            WHERE rs.id = regional_signal_evidences.signal_id
-            AND rs.distinct_farms_count >= 3
-            AND rs.validation_status != 'SUSPENDED'
+        OR (
+            current_setting('app.current_user_id', true) != ''
+            AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                WHERE ur.user_id::text = current_setting('app.current_user_id', true)
+                AND ur.role_id IN ('ADMIN', 'AGRICULTURAL_EXPERT', 'RESEARCHER')
+            )
         )
     )"""
             write_expr = f"""(

@@ -11,6 +11,7 @@ import httpx
 
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
+from backend.app.core.key_manager import ApiKeyManager
 
 DATA_GOV_IN_ATTRIBUTION = "Source: Ministry of Agriculture & Farmers Welfare, Government of India (data.gov.in / Agmarknet)"
 
@@ -51,9 +52,10 @@ class DataGovClient:
                 "details": "DATA_GOV_IN_API_KEY not configured. Seeded baseline benchmark rates active."
             }
 
+        active_key = ApiKeyManager.pick_best_key("data_gov_in", default_raw_keys=self.api_key) or self.api_key
         url = f"{self.BASE_URL}/{self.resource_id}"
         params = {
-            "api-key": self.api_key,
+            "api-key": active_key,
             "format": "json",
             "limit": "1"
         }
@@ -65,6 +67,7 @@ class DataGovClient:
                 latency_ms = round((time.time() - t0) * 1000, 1)
 
                 if resp.status_code == 200:
+                    ApiKeyManager.record_success("data_gov_in", active_key)
                     data = resp.json()
                     return {
                         "status": "CONFIGURED",
@@ -77,12 +80,14 @@ class DataGovClient:
                         "free_tier": True
                     }
                 elif resp.status_code == 401 or resp.status_code == 403:
+                    ApiKeyManager.record_auth_failure("data_gov_in", active_key)
                     return {
                         "status": "AUTHENTICATION_FAILED",
                         "provider": "data.gov.in",
                         "error": "Invalid API key or unauthorized resource access."
                     }
                 elif resp.status_code == 429:
+                    ApiKeyManager.record_rate_limit("data_gov_in", active_key)
                     return {
                         "status": "RATE_LIMITED",
                         "provider": "data.gov.in",
@@ -124,9 +129,10 @@ class DataGovClient:
                 "message": "data.gov.in API key not configured."
             }
 
+        active_key = ApiKeyManager.pick_best_key("data_gov_in", default_raw_keys=self.api_key) or self.api_key
         url = f"{self.BASE_URL}/{self.resource_id}"
         params = {
-            "api-key": self.api_key,
+            "api-key": active_key,
             "format": "json",
             "limit": str(min(100, limit)),
             "filters[state.keyword]": "Telangana"
@@ -141,6 +147,7 @@ class DataGovClient:
                 latency_ms = round((time.time() - t0) * 1000, 1)
 
                 if resp.status_code == 200:
+                    ApiKeyManager.record_success("data_gov_in", active_key)
                     data = resp.json()
                     records = data.get("records", [])
                     normalized = []
@@ -173,10 +180,18 @@ class DataGovClient:
                         "attribution": DATA_GOV_IN_ATTRIBUTION
                     }
                 elif resp.status_code == 429:
+                    ApiKeyManager.record_rate_limit("data_gov_in", active_key)
                     return {
                         "success": False,
                         "error_code": "RATE_LIMIT_EXCEEDED",
                         "message": "Free quota exceeded on data.gov.in."
+                    }
+                elif resp.status_code in (401, 403):
+                    ApiKeyManager.record_auth_failure("data_gov_in", active_key)
+                    return {
+                        "success": False,
+                        "error_code": "AUTHENTICATION_FAILED",
+                        "message": "Invalid API key or unauthorized resource access on data.gov.in."
                     }
                 else:
                     return {

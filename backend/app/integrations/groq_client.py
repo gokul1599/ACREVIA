@@ -10,6 +10,7 @@ import httpx
 
 from backend.app.core.config import settings
 from backend.app.core.logging import logger
+from backend.app.core.key_manager import ApiKeyManager
 
 
 class GroqClient:
@@ -53,8 +54,9 @@ class GroqClient:
                 "details": "GROQ_API_KEY is not set. Deterministic fallback active."
             }
 
+        active_key = ApiKeyManager.pick_best_key("groq", default_raw_keys=self.api_key) or self.api_key
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {active_key}",
             "User-Agent": "ACREVIA-AgriBrain/1.0"
         }
 
@@ -65,6 +67,7 @@ class GroqClient:
                 latency_ms = round((time.time() - t0) * 1000, 1)
 
                 if resp.status_code == 200:
+                    ApiKeyManager.record_success("groq", active_key)
                     data = resp.json().get("data", [])
                     available_model_ids = {m.get("id") for m in data if m.get("id")}
                     primary_active = self.model in available_model_ids
@@ -82,14 +85,16 @@ class GroqClient:
                         "latency_ms": latency_ms,
                         "free_tier": True
                     }
-                elif resp.status_code == 401:
-                    logger.warning("Groq authentication failed (HTTP 401).")
+                elif resp.status_code in (401, 403):
+                    ApiKeyManager.record_auth_failure("groq", active_key)
+                    logger.warning("Groq authentication failed (HTTP 401/403).")
                     return {
                         "status": "AUTHENTICATION_FAILED",
                         "provider": "GroqCloud",
                         "error": "Invalid API key"
                     }
                 elif resp.status_code == 429:
+                    ApiKeyManager.record_rate_limit("groq", active_key)
                     retry_after = resp.headers.get("retry-after", "60")
                     return {
                         "status": "RATE_LIMITED",
@@ -128,8 +133,9 @@ class GroqClient:
                 "deterministic_fallback_active": True
             }
 
+        active_key = ApiKeyManager.pick_best_key("groq", default_raw_keys=self.api_key) or self.api_key
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {active_key}",
             "Content-Type": "application/json",
             "User-Agent": "ACREVIA-AgriBrain/1.0"
         }
@@ -162,6 +168,7 @@ class GroqClient:
                         latency_ms = round((time.time() - t0) * 1000, 1)
 
                         if resp.status_code == 200:
+                            ApiKeyManager.record_success("groq", active_key)
                             body = resp.json()
                             choices = body.get("choices", [])
                             content = choices[0].get("message", {}).get("content", "") if choices else ""
@@ -185,6 +192,8 @@ class GroqClient:
                                 }
                             }
                         elif resp.status_code in (404, 429, 500, 502, 503, 504):
+                            if resp.status_code == 429:
+                                ApiKeyManager.record_rate_limit("groq", active_key)
                             headers_obj = getattr(resp, "headers", None)
                             retry_after_hdr = "30"
                             if headers_obj is not None and hasattr(headers_obj, "get"):

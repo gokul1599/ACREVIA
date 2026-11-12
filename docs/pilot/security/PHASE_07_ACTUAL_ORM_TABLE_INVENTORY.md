@@ -1365,14 +1365,19 @@ An audit of previous narrative reports identified discrepancies where colloquial
   - `instrument_details` (VARCHAR(100)) &mdash; NULL
   - `measured_at` (DATETIME) &mdash; NOT NULL
 
-### regional_signal_evidences (`RegionalSignalEvidence`)
-- **Source File:** `C:\Users\gokul\OneDrive\Documents\projects\backend\app\models\regional_pulse.py`
-  - `id` (VARCHAR(36)) [PK] &mdash; NOT NULL
-  - `signal_id` (VARCHAR(36)) &mdash; NOT NULL
-  - `evidence_type` (VARCHAR(50)) &mdash; NOT NULL
-  - `evidence_reference_id` (VARCHAR(100)) &mdash; NOT NULL
-  - `evidence_notes` (TEXT) &mdash; NULL
-  - `added_at` (DATETIME) &mdash; NOT NULL
+### regional_signal_evidences (RegionalSignalEvidence)
+- **Source File:** C:\\Users\\gokul\\OneDrive\\Documents\\projects\\backend\\app\\models\\regional_pulse.py
+  - id (VARCHAR(36)) [PK] &mdash; NOT NULL
+  - signal_id (VARCHAR(36)) &mdash; NOT NULL [FK -> regional_signals.id]
+  - evidence_type (VARCHAR(50)) &mdash; NOT NULL
+  - evidence_reference_id (VARCHAR(100)) &mdash; NOT NULL
+  - evidence_notes (TEXT) &mdash; NULL
+  - dded_at (DATETIME) &mdash; NOT NULL
+- **RLS Category:** COMMUNITY_COLLABORATIVE (FORCE RLS: **YES**)
+- **Access Behavior:**
+  - SELECT: Restricted to ADMIN, AGRICULTURAL_EXPERT, RESEARCHER, or ADMIN_BYPASS_SQL (ZERO public read, preserving farm anonymity).
+  - INSERT / UPDATE / DELETE: Restricted to ADMIN, AGRICULTURAL_EXPERT, RESEARCHER, or ADMIN_BYPASS_SQL.
+- **Sensitive Fields:** evidence_reference_id (contains granular observation/alert references), evidence_notes.
 
 ### regional_signals (`RegionalSignal`)
 - **Source File:** `C:\Users\gokul\OneDrive\Documents\projects\backend\app\models\regional_pulse.py`

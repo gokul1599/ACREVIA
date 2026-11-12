@@ -32,6 +32,7 @@ class RegionalSignalCreate(BaseModel):
     recommended_action: str
     observed_start_date: date
     observed_end_date: date
+    evidences: Optional[List[dict]] = None
 
 
 class RegionalSignalResponse(BaseModel):

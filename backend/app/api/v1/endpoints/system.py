@@ -16,6 +16,8 @@ from backend.app.integrations.hf_client import hf_client
 from backend.app.integrations.copernicus_client import copernicus_client
 from backend.app.integrations.datagov_client import datagov_client
 from backend.app.integrations.satellite_client import satellite_client
+from backend.app.integrations.soilgrids_client import soilgrids_client
+from backend.app.integrations.nasa_power_client import nasa_power_client
 
 router = APIRouter(prefix="/system", tags=["System & Integrations"])
 
@@ -81,6 +83,8 @@ async def get_integration_status() -> Dict[str, Any]:
     satellite_health = await satellite_client.check_health()
     copernicus_health = await copernicus_client.check_health()
     datagov_health = await datagov_client.check_health()
+    soilgrids_health = await soilgrids_client.check_health()
+    nasa_power_health = await nasa_power_client.check_health()
 
     # 3. Database (Neon PostgreSQL) Health
     try:
@@ -165,6 +169,8 @@ async def get_integration_status() -> Dict[str, Any]:
                 "auth_required": False,
                 "attribution": weather_sample.get("attribution")
             },
-            "data_gov_in": datagov_health
+            "data_gov_in": datagov_health,
+            "isric_soilgrids": soilgrids_health,
+            "nasa_power": nasa_power_health
         }
     }

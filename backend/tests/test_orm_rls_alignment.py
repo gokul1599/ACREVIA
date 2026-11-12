@@ -274,13 +274,14 @@ def test_regional_signals_threshold_and_evidence():
     [STATIC_POLICY_GENERATION_TEST]
     Verifies:
     1. RegionalSignal enforces distinct_farms_count >= 3 for public visibility.
-    2. Evidence inherits parent signal access.
-    3. Writes strictly restricted to ADMIN_BYPASS_SQL (dedicated worker architecture required).
+    2. Evidence table (regional_signal_evidences) strictly restricts read access
+       to ADMIN, AGRICULTURAL_EXPERT, and RESEARCHER to protect underlying farmer anonymity.
+    3. Writes strictly restricted to ADMIN, AGRICULTURAL_EXPERT, and RESEARCHER or ADMIN_BYPASS_SQL.
     """
     sig_ddl = generate_rls_ddl("regional_signals", TableCategory.COMMUNITY_COLLABORATIVE)
     assert "distinct_farms_count >= 3" in sig_ddl
     assert ADMIN_BYPASS_SQL in sig_ddl
 
     ev_ddl = generate_rls_ddl("regional_signal_evidences", TableCategory.COMMUNITY_COLLABORATIVE)
-    assert "regional_signals" in ev_ddl
-    assert "rs.distinct_farms_count >= 3" in ev_ddl
+    assert "ur.role_id IN ('ADMIN', 'AGRICULTURAL_EXPERT', 'RESEARCHER')" in ev_ddl
+    assert ADMIN_BYPASS_SQL in ev_ddl

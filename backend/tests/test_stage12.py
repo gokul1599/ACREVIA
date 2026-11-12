@@ -451,8 +451,10 @@ def test_scenario_d_acrevia_research_hub(
 
 def test_scenario_e_extension_and_regional_pulse(
     client: TestClient,
+    farmer_user: User,
     farmer_token: str,
     expert_token: str,
+    db_session: Session,
 ):
     """Scenario E: Extension educational guides, event capacity limits, regional pulse threshold (N >= 3) and outbreak claim suppression."""
     farmer_headers = {"Authorization": f"Bearer {farmer_token}"}
@@ -503,6 +505,20 @@ def test_scenario_e_extension_and_regional_pulse(
     assert res_bad_sig.status_code == 400
     assert "distinct farms" in res_bad_sig.json()["detail"].lower()
 
+    # Create 3 verified farms and observations in Warangal within the signal window
+    from backend.app.models.observation import Observation
+    f_a = Farm(owner_id=farmer_user.id, name="Farm A", state="Telangana", district="Warangal", mandal="M1", village="V1", total_acreage=2.0)
+    f_b = Farm(owner_id=farmer_user.id, name="Farm B", state="Telangana", district="Warangal", mandal="M2", village="V2", total_acreage=3.0)
+    f_c = Farm(owner_id=farmer_user.id, name="Farm C", state="Telangana", district="Warangal", mandal="M3", village="V3", total_acreage=4.0)
+    db_session.add_all([f_a, f_b, f_c])
+    db_session.flush()
+
+    obs_a = Observation(farm_id=f_a.id, observer_id=farmer_user.id, notes="Pest sighting A", created_at=datetime(2026, 7, 12, tzinfo=timezone.utc))
+    obs_b = Observation(farm_id=f_b.id, observer_id=farmer_user.id, notes="Pest sighting B", created_at=datetime(2026, 7, 12, tzinfo=timezone.utc))
+    obs_c = Observation(farm_id=f_c.id, observer_id=farmer_user.id, notes="Pest sighting C", created_at=datetime(2026, 7, 12, tzinfo=timezone.utc))
+    db_session.add_all([obs_a, obs_b, obs_c])
+    db_session.commit()
+
     # 5. Regional Pulse: Valid signal aggregation with sensational panic keywords -> Outbreak Claim Suppressed
     panic_signal_payload = {
         "district": "Warangal",
@@ -518,6 +534,11 @@ def test_scenario_e_extension_and_regional_pulse(
         "recommended_action": "Install pheromone traps @ 4/acre and inspect 20 green bolls per acre.",
         "observed_start_date": "2026-07-10",
         "observed_end_date": "2026-07-15",
+        "evidences": [
+            {"evidence_type": "OBSERVATION_REF", "evidence_reference_id": obs_a.id, "evidence_notes": "Obs A"},
+            {"evidence_type": "OBSERVATION_REF", "evidence_reference_id": obs_b.id, "evidence_notes": "Obs B"},
+            {"evidence_type": "OBSERVATION_REF", "evidence_reference_id": obs_c.id, "evidence_notes": "Obs C"},
+        ],
     }
     res_sig = client.post("/api/v1/regional-pulse/signals", json=panic_signal_payload, headers=expert_headers)
     assert res_sig.status_code == 201

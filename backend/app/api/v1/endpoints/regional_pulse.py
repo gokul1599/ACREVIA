@@ -25,7 +25,8 @@ def aggregate_signal(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return RegionalPulseService.aggregate_regional_signal(db, data=data)
+    evidences = getattr(data, "evidences", None)
+    return RegionalPulseService.aggregate_regional_signal(db, data=data, evidences=evidences)
 
 
 @router.get("/signals", response_model=List[RegionalSignalResponse], status_code=status.HTTP_200_OK)
@@ -38,9 +39,26 @@ def list_signals(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return RegionalPulseService.query_signals(
+    signals = RegionalPulseService.query_signals(
         db, district=district, crop_id=crop_id, confidence_tier=confidence_tier, limit=limit, offset=offset
     )
+    user_roles = [r.id for r in current_user.roles]
+    is_privileged = any(r in ("ADMIN", "AGRICULTURAL_EXPERT", "RESEARCHER") for r in user_roles)
+
+    results = []
+    for sig in signals:
+        # Pre-read dynamic provenance revalidation: closes the stale-publication window
+        is_valid = RegionalPulseService.revalidate_signal_provenance(db, sig.id)
+        if not is_valid and not is_privileged:
+            continue
+        if sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE" and not is_privileged:
+            continue
+
+        sig_data = RegionalSignalResponse.model_validate(sig)
+        if not is_privileged:
+            sig_data.evidences = []
+        results.append(sig_data)
+    return results
 
 
 @router.get("/signals/{signal_id}", response_model=RegionalSignalResponse, status_code=status.HTTP_200_OK)
@@ -55,4 +73,19 @@ def get_signal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Regional signal not found",
         )
-    return sig
+
+    # Pre-read dynamic provenance revalidation: closes the stale-publication window
+    is_valid = RegionalPulseService.revalidate_signal_provenance(db, sig.id)
+    user_roles = [r.id for r in current_user.roles]
+    is_privileged = any(r in ("ADMIN", "AGRICULTURAL_EXPERT", "RESEARCHER") for r in user_roles)
+
+    if (not is_valid or sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE") and not is_privileged:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Regional signal not found or suppressed due to insufficient provenance",
+        )
+
+    sig_data = RegionalSignalResponse.model_validate(sig)
+    if not is_privileged:
+        sig_data.evidences = []
+    return sig_data

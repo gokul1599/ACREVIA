@@ -25,17 +25,35 @@ from backend.app.services.riskcast.rule_engine import RuleEvaluationEngine
 
 class RiskCastService:
     @classmethod
-    async def evaluate_plot(cls, plot_id: str, current_user: User, db: Session) -> RiskAssessmentRecord:
+    async def evaluate_plot(
+        cls,
+        plot_id: str,
+        current_user: Optional[User] = None,
+        db: Session = None,
+        actor_identity: str = "user"
+    ) -> RiskAssessmentRecord:
         """
         Runs complete agrometeorological risk evaluation for a plot.
         Generates RiskAssessmentRecord and idempotent RiskAlert if severity is HIGH or MODERATE.
+        Supports both user-initiated API flows (with verify_farm_access) and system worker
+        flows (scoped to tenant context without farmer impersonation).
         """
         plot = db.get(Plot, plot_id)
         if not plot:
             raise NotFoundException(f"Plot '{plot_id}' not found.")
 
-        # Verify access
-        farm = verify_farm_access(farm_id=plot.farm_id, user=current_user, db=db)
+        # Verify access: user flow vs. background worker flow
+        if current_user:
+            farm = verify_farm_access(farm_id=plot.farm_id, user=current_user, db=db)
+        else:
+            # System worker flow: verify plot matches current tenant context without user impersonation
+            ctx = db.info.get("tenant_context", {})
+            tenant_id = ctx.get("tenant_id")
+            if tenant_id and str(plot.farm_id) != str(tenant_id):
+                raise PermissionError(f"Cross-tenant evaluation blocked: plot {plot_id} does not belong to tenant {tenant_id}")
+            farm = db.get(Farm, plot.farm_id)
+            if not farm or farm.is_archived:
+                raise NotFoundException(f"Farm '{plot.farm_id}' not found or archived.")
 
         # Retrieve active crop season and stage
         stmt = (
