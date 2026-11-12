@@ -9,7 +9,7 @@
 **Audit Determination:** **`PARTIALLY_RESOLVED`**  
 - `LOCAL_PRIVILEGE_SPECIFICATION`: **`RESOLVED_LOCALLY_AND_TESTED`**  
 - `LIVE_DATABASE_ACL_ENFORCEMENT`: **`BLOCKED_PENDING_LIVE_POSTGRESQL`** (Requires Gate 02/04 on live staging)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (`test_database_privileges_truncate_and_views_audit`, `test_132_tables_exact_crosswalk_set_equality`)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (`test_database_privileges_truncate_and_views_audit`, `test_132_tables_exact_crosswalk_set_equality`, `test_132_tables_privilege_crosswalk_exact_counts_and_no_blanket_dml`, `test_idempotent_privilege_grants_ddl_explicit_revokes` — 50 tests in suite, 97 across Phase 07)  
 
 ---
 
@@ -20,9 +20,18 @@
 > In PostgreSQL, Row-Level Security (RLS) policies apply **only** to standard row-level DML operations (`SELECT`, `INSERT`, `UPDATE`, `DELETE`).  
 > RLS does **not** protect against:
 > 1. **`TRUNCATE`**: Bypasses all row-level filters and clears the entire table regardless of active RLS policies.
-> 2. **`REFERENCES`**: Allows an unprivileged attacker to infer the existence of hidden rows in another tenant's partition via foreign key constraint violation probing.
+> 2. **`REFERENCES`**: In PostgreSQL, the `REFERENCES` privilege permits a role to create foreign-key constraints referencing a target table or columns. Denying it prevents unprivileged runtime roles from creating unauthorized schema-level foreign keys, creating lock contention side-channels, and existence-probing rows across tenant boundaries.
+> 3. **`TRIGGER`**: Allows creation of triggers that execute arbitrary code with elevated owner permissions.
 >
-> Therefore, runtime application roles (`acrevia_staging_app`) must be granted **only** `SELECT`, `INSERT`, `UPDATE`, and `DELETE`. They must be strictly **denied** `TRUNCATE`, `REFERENCES`, and `TRIGGER` across all 132 database entities.
+> Furthermore, in SQL **omission is not revocation**. If a runtime role previously acquired direct or inherited privileges, omitting `UPDATE` and `DELETE` from a `GRANT` statement leaves pre-existing privileges active! Therefore, `generate_privilege_grants_ddl()` generates fully idempotent SQL emitting explicit `REVOKE` statements for disallowed DML prior to granting permitted DML.  
+> Across all 132 database entities:
+> - **SELECT**: Granted on all **132** tables.
+> - **INSERT**: Granted on **108** tables (91 tenant + 16 community + 1 shared reference `ingestion_jobs`); Denied on **24** shared reference tables.
+> - **UPDATE**: Granted on **107** tables (90 tenant + 16 community + 1 shared reference `ingestion_jobs`); Denied on **24** shared reference tables and **1** append-only table (`audit_logs`).
+> - **DELETE**: Granted on **90** tenant tables; Strictly **DENIED** on all **16** community tables, all **25** shared reference tables, and **1** append-only table (`audit_logs`).
+> - **TRUNCATE**: Strictly **DENIED (0 tables)**.
+> - **REFERENCES**: Strictly **DENIED (0 tables)**.
+> - **TRIGGER**: Strictly **DENIED (0 tables)**.
 
 ---
 
@@ -41,7 +50,52 @@ Earlier preliminary summaries reported differing category counts (e.g. 24 direct
 
 ---
 
-## 3. Authoritative 132-Table Privilege & RLS Crosswalk
+
+---
+
+## 2.1. Programmatic Privilege Crosswalk & Mathematical Reconciliation
+
+The least-privilege matrix is programmatically defined in `backend/app/database/rls.py` as `PRIVILEGE_CROSSWALK`:
+
+```python
+# Programmatic least-privilege derivation in backend/app/database/rls.py
+PRIVILEGE_CROSSWALK: Dict[str, Dict[str, Any]]
+```
+
+### 1. Mathematical Privilege Distribution
+| Privilege Name | Granted Tables | Denied Tables | Scope & Category Justification |
+| :--- | :---: | :---: | :--- |
+| **`SELECT`** | **132** | **0** | Baseline read visibility required across all application entities. |
+| **`INSERT`** | **108** | **24** | Allowed for tenant tables, community contributions, and `ingestion_jobs`. Denied for static reference tables. |
+| **`UPDATE`** | **107** | **25** | Allowed for mutable entities; denied for read-only agricultural reference catalogs (24) and append-only audit trail `audit_logs` (1). |
+| **`DELETE`** | **90** | **42** | **Strictly denied on all 16 community tables**, all 25 reference tables, and append-only audit trail `audit_logs` (1). Allowed only on mutable tenant entities. |
+| **`TRUNCATE`** | **0** | **132** | **0 tables authorized.** Prevents whole-table wipeout bypassing RLS. |
+| **`REFERENCES`** | **0** | **132** | **0 tables authorized.** Prevents unauthorized schema-level foreign-key creation and cross-tenant existence probing. |
+| **`TRIGGER`** | **0** | **132** | **0 tables authorized.** Prevents unprivileged trigger injection. |
+
+### 2. Evidence Classification Taxonomy
+Every assertion in this matrix carries one of four explicit evidence classifications:
+- **`LOCALLY_SPECIFIED`**: The privilege configuration is fully specified in local source code (`PRIVILEGE_CROSSWALK`, `TABLE_CLASSIFICATION`, `generate_privilege_grants_ddl`).
+- **`PROPOSED_FOR_FUTURE_PROVISIONING`**: The role creation DDL for `acrevia_staging_app` and `acrevia_admin` is authored and tested offline, pending Project Owner approval.
+- **`NOT_LIVE_INSTALLED`**: The SQL `GRANT` and `REVOKE` statements have not been applied to the live Neon PostgreSQL database.
+- **`NOT_PROVEN_LIVE`**: Database kernel catalog reflection (`information_schema.table_privileges`, `pg_class`, `pg_roles`) has not been queried against physical cloud infrastructure in Mode A.
+
+
+### 3. Idempotent DDL Generation: Omission is Not Revocation
+In PostgreSQL privilege management, issuing `GRANT SELECT, INSERT ON TABLE audit_logs TO role;` does NOT revoke pre-existing `UPDATE` or `DELETE` grants. To achieve genuine idempotency, `generate_privilege_grants_ddl()` explicitly revokes disallowed permissions:
+```sql
+-- Explicit defensive revocation guarantees clean slate regardless of prior grants
+REVOKE UPDATE, DELETE ON TABLE audit_logs FROM acrevia_staging_app;
+GRANT SELECT, INSERT ON TABLE audit_logs TO acrevia_staging_app;
+REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE audit_logs FROM acrevia_staging_app;
+```
+Verified via unit test `test_idempotent_privilege_grants_ddl_explicit_revokes`:
+- Emits explicit `REVOKE UPDATE, DELETE ON TABLE audit_logs`.
+- Emits explicit `REVOKE DELETE ON TABLE agricultural_organizations`.
+- Emits explicit `REVOKE INSERT, UPDATE, DELETE ON TABLE crops`.
+- Emits explicit `REVOKE TRUNCATE, REFERENCES, TRIGGER` on all 132 tables.
+
+## 4. Authoritative 132-Table Privilege & RLS Crosswalk
 
 The table below provides the single authoritative, complete, table-by-table crosswalk for every entity in ACREVIA:
 
@@ -53,7 +107,7 @@ The table below provides the single authoritative, complete, table-by-table cros
 | 4 | `annotation_tasks` | `AnnotationTask` | `community` | `COMMUNITY_COLLABORATIVE_DML` | **YES** | **YES** | Granted | Granted | Granted | Denied | **Denied** | **Denied** | **Denied** | `neondb_owner` | Author/Expert collaborative isolation |
 | 5 | `api_applications` | `ApiApplication` | `user_owned` | `USER_OWNED_DML` | **YES** | **YES** | Granted | Granted | Granted | Granted | **Denied** | **Denied** | **Denied** | `neondb_owner` | Scoped by user_id RESTRICTIVE |
 | 6 | `api_credentials` | `ApiCredential` | `tenant_indirect` | `TENANT_INDIRECT_DML` | **YES** | **YES** | Granted | Granted | Granted | Granted | **Denied** | **Denied** | **Denied** | `neondb_owner` | Child of api_applications via application_id |
-| 7 | `audit_logs` | `AuditLog` | `tenant_direct` | `TENANT_DIRECT_DML` | **YES** | **YES** | Granted | Granted | Granted | Granted | **Denied** | **Denied** | **Denied** | `neondb_owner` | Scoped by farm_id RESTRICTIVE |
+| 7 | `audit_logs` | `AuditLog` | `tenant_direct` | `TENANT_DIRECT_APPEND_ONLY` | **YES** | **YES** | Granted | Granted | **Denied** | **Denied** | **Denied** | **Denied** | **Denied** | `neondb_owner` | Scoped by farm_id RESTRICTIVE; strictly append-only under ACREVIA audit-integrity architectural specification (UPDATE & DELETE denied) |
 | 8 | `climate_adaptation_scenarios` | `ClimateAdaptationScenario` | `tenant_indirect` | `TENANT_INDIRECT_DML` | **YES** | **YES** | Granted | Granted | Granted | Granted | **Denied** | **Denied** | **Denied** | `neondb_owner` | Child of climate_exposure_assessments via assessment_id |
 | 9 | `climate_baselines` | `ClimateBaseline` | `shared_reference` | `PUBLIC_SHARED_REF` | **YES** | **NO** | Granted | Denied | Denied | Denied | **Denied** | **Denied** | **Denied** | `neondb_owner` | Public/Authenticated read-only reference |
 | 10 | `climate_exposure_assessments` | `ClimateExposureAssessment` | `tenant_indirect` | `TENANT_INDIRECT_DML` | **YES** | **YES** | Granted | Granted | Granted | Granted | **Denied** | **Denied** | **Denied** | `neondb_owner` | Child of plots via plot_id |
@@ -202,20 +256,23 @@ Inspection of `get_staging_branch_specification()` confirms that the runtime rol
 
 ---
 
-## 5. Special Privileges & Capabilities Audit
+## 5. Non-Table SQL Privileges Inventory & Evidence Tagging
 
-| Special Privilege / Capability | Runtime Role (`acrevia_staging_app`) | Admin Role (`acrevia_admin`) | Migration Owner (`neondb_owner`) | Security Invariant |
-| :--- | :---: | :---: | :---: | :--- |
-| **`TRUNCATE`** | **DENIED** | **DENIED** | **Allowed** | Whole-table bypass structurally blocked for application runtime. |
-| **`REFERENCES`** | **DENIED** | **DENIED** | **Allowed** | Cross-tenant probing via foreign key errors blocked. |
-| **`TRIGGER`** | **DENIED** | **DENIED** | **Allowed** | Prevents unprivileged trigger installation. |
-| **`CREATE` on `public` schema** | **DENIED** | **DENIED** | **Allowed** | Prevents creation of untracked tables or spoofed functions. |
-| **`ALTER` / `DROP` ownership** | **DENIED** | **DENIED** | **Allowed** | Table ownership restricted strictly to `neondb_owner`. |
-| **Sequence `USAGE`, `SELECT`** | **Allowed** | **Allowed** | **Allowed** | Required for surrogate primary key generation. |
-| **Sequence `UPDATE`** | **DENIED** | **DENIED** | **Allowed** | Prevents sequence tampering. |
-| **Database `CONNECT`** | **Allowed** | **Allowed** | **Allowed** | Connection pooling requirement. |
-| **Database `TEMPORARY`** | **DENIED** | **DENIED** | **Allowed** | Prevents temp table search-path shadowing. |
-| **Role `INHERIT`** | **NOINHERIT** | **NOINHERIT** | **INHERIT** | Prevents accidental inheritance of administrative grants. |
+Every SQL-level permission beyond standard table DML is classified below with its rigorous evidence taxonomy tag:
+
+| Non-Table SQL Privilege / Capability | Runtime Role (`acrevia_staging_app`) | Admin Role (`acrevia_admin`) | Migration Owner (`neondb_owner`) | Evidence Classification Status | Security Rationale & Specification |
+| :--- | :---: | :---: | :---: | :--- | :--- |
+| **Schema `USAGE` on `public`** | **Allowed** | **Allowed** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Required for namespace resolution of public tables. |
+| **Schema `CREATE` on `public`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents runtime role from creating untracked tables or spoofing functions. |
+| **Sequence `USAGE`, `SELECT`** | **Allowed** | **Allowed** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Required for auto-incrementing surrogate primary keys (`bigserial`/`identity`). |
+| **Sequence `UPDATE`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents out-of-order sequence exhaustion or primary-key collisions. |
+| **Table `TRUNCATE`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | RLS bypass mitigation: whole-table truncation strictly denied. |
+| **Table `REFERENCES`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents unauthorized schema-level foreign key creation, cross-table locking side-channels, and unexpected dependency chains. |
+| **Table `TRIGGER`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents unauthorized trigger creation or event manipulation. |
+| **Default Privileges (`ALTER DEFAULT...`)** | **Restricted** | **Restricted** | **Configured** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Default table creation privileges automatically inherit least-privilege DML. |
+| **Role Attribute: `NOINHERIT`** | **NOINHERIT** | **NOINHERIT** | **INHERIT** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents ambient role grant inheritance. Note: NOINHERIT alone does not prevent switching roles if explicit SET ROLE is authorized. |
+| **Database `CONNECT`** | **Allowed** | **Allowed** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Baseline connection requirement for connection pool checkouts. |
+| **Database `TEMPORARY`** | **DENIED** | **DENIED** | **Allowed** | `LOCALLY_SPECIFIED` / `PROPOSED_FOR_FUTURE_PROVISIONING` / `NOT_LIVE_INSTALLED` / `NOT_PROVEN_LIVE` | Prevents temporary table search-path poisoning attacks. |
 
 ---
 

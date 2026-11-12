@@ -7,17 +7,23 @@
 **Classification:** RESTRICTED — PILOT DATABASE POLICY AUDIT  
 **Operating Mode:** **`MODE A ONLY`** (Local Source Inspection & Offline Verification)  
 **Audit Determination:** **`RESOLVED_LOCALLY_AND_TESTED`**  
-**Associated Baseline Tests:** `backend/tests/test_orm_rls_alignment.py` (12 passing tests), `backend/tests/test_rls_offline_ddl.py` (9 passing tests), `backend/tests/test_rls_policy_semantics.py` (14 passing tests)  
+**Associated Baseline Tests:** `backend/tests/test_target_validation.py` (12 passing tests), `backend/tests/test_rls_offline_ddl.py` (9 passing tests), `backend/tests/test_rls_policy_semantics.py` (14 passing tests), `backend/tests/test_orm_rls_alignment.py` (12 passing tests), `backend/tests/test_worker_security_and_privacy.py` (50 passing tests) — **Total: 97 passing tests across Phase 07 suite**  
 
 ---
 
 ## 1. Metadata Set Equality & Mathematical Reconciliation
 
-### Table Inventory Verification:
+### Three-Way Table Inventory Verification:
 - **SQLAlchemy Metadata (`Base.metadata.tables`):** Exactly **132** tables.
 - **Classification Dictionary (`TABLE_CLASSIFICATION`):** Exactly **132** tables.
+- **Privilege Crosswalk (`PRIVILEGE_CROSSWALK`):** Exactly **132** tables.
+- **Least-Privilege Counts Reconciled:** SELECT (132), INSERT (108), UPDATE (107), DELETE (90), TRUNCATE (0), REFERENCES (0), TRIGGER (0).
+- **Three-Way Set Equality:**  
+  $$\mathbf{Base.metadata.tables \equiv TABLE\_CLASSIFICATION \equiv PRIVILEGE\_CROSSWALK}$$
 - **Difference (`metadata_tables - classification_tables`):** $\emptyset$ (Zero unclassified tables).
 - **Difference (`classification_tables - metadata_tables`):** $\emptyset$ (Zero phantom tables).
+- **Difference (`metadata_tables - crosswalk_tables`):** $\emptyset$ (Zero tables lacking privilege definitions).
+- **Difference (`crosswalk_tables - metadata_tables`):** $\emptyset$ (Zero extraneous privilege entries).
 
 ---
 

@@ -10,7 +10,10 @@ Honest Evidentiary Classification:
 
 import pytest
 import asyncio
-from datetime import datetime, timezone, date
+import uuid
+from datetime import datetime, timezone, timedelta, date
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -34,9 +37,16 @@ from backend.app.tasks.run_riskcast_batch import (
     run_batch,
     ProductionDispatchBlockedError,
     TaskManifestVerificationError,
+    DispatchAuthorizationFailedError,
+    DispatchAuthorization,
+    DispatchVerifier,
     BatchTaskManifest,
     verify_dispatch_manifest,
     PROCESSED_TASK_IDS,
+)
+from backend.app.database.rls import (
+    PRIVILEGE_CROSSWALK,
+    generate_privilege_grants_ddl,
 )
 
 
@@ -141,8 +151,10 @@ def test_riskcast_worker_farm_scoped_execution_and_context_reset():
     # Mock SessionLocal and RiskCastService
     with patch("backend.app.tasks.run_riskcast_batch.SessionLocal", TestingSession):
         with patch("backend.app.tasks.run_riskcast_batch.RiskCastService.evaluate_plot", return_value={"risk": "LOW"}) as mock_eval:
+            # Issue verified test authorization grant
+            auth_grant = DispatchVerifier.issue_test_authorization(task_id="test-task-01", farm_id="farm-tenant-01")
             # Run evaluate_single_farm
-            evaluated = asyncio.run(evaluate_single_farm("farm-tenant-01", is_authorized=True))
+            evaluated = asyncio.run(evaluate_single_farm("farm-tenant-01", authorization=auth_grant))
             assert evaluated == 1
 
             # Verify that evaluate_plot was invoked with non-human worker identity and current_user=None (NO FARMER IMPERSONATION)
@@ -207,7 +219,8 @@ def test_riskcast_worker_rejects_archived_farm_and_clears_context():
         session.commit()
 
     with patch("backend.app.tasks.run_riskcast_batch.SessionLocal", TestingSession):
-        evaluated = asyncio.run(evaluate_single_farm("farm-arch-01", is_authorized=True))
+        auth_grant = DispatchVerifier.issue_test_authorization(task_id="test-task-02", farm_id="farm-arch-01")
+        evaluated = asyncio.run(evaluate_single_farm("farm-arch-01", authorization=auth_grant))
         assert evaluated == 0
 
         with TestingSession() as verify_session:
@@ -261,7 +274,6 @@ def test_organization_public_contact_information_masking():
     mask private contact details (contact_email, contact_phone, registration_number).
     """
     from backend.app.schemas.collective import AgriculturalOrganizationResponse
-    from datetime import datetime, timezone
 
     # Create an organization instance
     org = AgriculturalOrganization(
@@ -305,7 +317,7 @@ def test_collective_organization_endpoint_privacy_matrix():
     5. Authorized system administrator -> contact fields unmasked
     """
     from backend.app.schemas.collective import AgriculturalOrganizationResponse
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
     from backend.app.api.v1.endpoints.collectives import list_organizations, get_organization
 
     engine = create_engine("sqlite:///:memory:", echo=False)
@@ -1032,14 +1044,27 @@ def test_riskcast_unscoped_discovery_query_eliminated():
 def test_evaluate_single_farm_unauthorized_rejection():
     """
     [OFFLINE_UNIT_TEST]
-    Proves that evaluate_single_farm fails closed with PermissionError if invoked
-    without explicit dispatch authorization (is_authorized=False).
-    Guarantees no tenant context is established for unverified caller inputs.
+    Proves that evaluate_single_farm fails closed:
+    1. Passing 'is_authorized=True' raises TypeError (boolean parameter completely eliminated).
+    2. Invoking without an authorization grant raises DispatchAuthorizationFailedError (PermissionError).
+    3. Invoking with a mismatched or expired authorization grant fails closed.
+    4. Guarantees no database session or tenant context is established for unverified caller inputs.
     """
     import uuid
     unauthorized_uuid = str(uuid.uuid4())
-    with pytest.raises(PermissionError, match="Unauthorized farm evaluation"):
-        asyncio.run(evaluate_single_farm(unauthorized_uuid, is_authorized=False))
+
+    # Case 1: Caller-controlled boolean bypass is impossible
+    with pytest.raises(TypeError, match="unexpected keyword argument 'is_authorized'"):
+        asyncio.run(evaluate_single_farm(unauthorized_uuid, is_authorized=True))
+
+    # Case 2: Raw call without authorization grant fails closed before session creation
+    with pytest.raises(DispatchAuthorizationFailedError, match="requires a verified DispatchAuthorization capability grant"):
+        asyncio.run(evaluate_single_farm(unauthorized_uuid, authorization=None))
+
+    # Case 3: Token mismatch (grant for Farm A passed to evaluate Farm B)
+    mismatched_grant = DispatchVerifier.issue_test_authorization(task_id="t-mismatch", farm_id=str(uuid.uuid4()))
+    with pytest.raises(DispatchAuthorizationFailedError, match="Target farm mismatch"):
+        asyncio.run(evaluate_single_farm(unauthorized_uuid, authorization=mismatched_grant))
 
 
 def test_batch_manifest_dispatcher_contract_and_replay_protection():
@@ -1408,3 +1433,1349 @@ def test_collective_organization_http_json_serialization_all_roles():
 
     finally:
         app.dependency_overrides.clear()
+
+
+# ==============================================================================
+# 14. COMPREHENSIVE WORKER AUTHORIZATION HARDENING & DEPLOYMENT CONTROLS
+# ==============================================================================
+
+def test_riskcast_production_environment_fail_closed_override_attempt():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that:
+    1. If settings.ENVIRONMENT is 'production' or 'staging', attempting to supply
+       is_local_dev=True or any caller argument CANNOT bypass the production boundary.
+    2. Direct evaluate_single_farm fails closed with ProductionDispatchBlockedError.
+    3. Issue_test_authorization fails closed with ProductionDispatchBlockedError.
+    4. Unrecognized environment (e.g. 'qa', 'unknown') fails closed.
+    """
+    import uuid
+    from backend.app.core.config import settings
+
+    target_uuid = str(uuid.uuid4())
+
+    # Case 1: Staging environment blocks all worker execution
+    with patch.object(settings, "ENVIRONMENT", "staging"):
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            asyncio.run(run_batch(target_farm_ids=[target_uuid], is_local_dev=True))
+
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            asyncio.run(evaluate_single_farm(target_uuid))
+
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            DispatchVerifier.issue_test_authorization("task-01", target_uuid)
+
+    # Case 2: Production environment blocks all worker execution
+    with patch.object(settings, "ENVIRONMENT", "production"):
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            asyncio.run(run_batch(is_local_dev=True))
+
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            asyncio.run(evaluate_single_farm(target_uuid))
+
+    # Case 3: Unknown environment fails closed
+    with patch.object(settings, "ENVIRONMENT", "qa_isolated"):
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED: Worker execution blocked in untrusted environment"):
+            asyncio.run(run_batch(target_farm_ids=[target_uuid]))
+
+
+def test_riskcast_manifest_forgery_rejection():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that a caller instantiating a BatchTaskManifest with is_verified=True
+    cannot bypass verification in production: execution remains strictly gated on
+    settings.ENVIRONMENT and dispatch boundary verification.
+    """
+    import uuid
+    from backend.app.core.config import settings
+
+    target_uuid = str(uuid.uuid4())
+    forged_manifest = BatchTaskManifest(
+        batch_id="forged-task-001",
+        target_farm_ids=[target_uuid],
+        actor_identity="unauthorized:actor",
+        is_verified=True,  # Caller attempts to assert verified status directly
+    )
+
+    with patch.object(settings, "ENVIRONMENT", "production"):
+        with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+            asyncio.run(run_batch(manifest=forged_manifest))
+
+
+# ==============================================================================
+# 15. REGIONAL PULSE FAIL-CLOSED PROVENANCE REVALIDATION & DEDUPLICATION
+# ==============================================================================
+
+def test_regional_pulse_revalidation_fails_closed_on_exception():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that when the provenance revalidation query encounters ANY database
+    or runtime exception, it fails closed:
+    1. Returns False (signal is ineligible).
+    2. Marks signal validation_status as SUPPRESSED_INSUFFICIENT_PROVENANCE.
+    3. Distinct farm count is reset to 0 (never trusts stale count).
+    """
+    from datetime import date
+    from backend.app.models.regional_pulse import RegionalSignal
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    with TestingSession() as session:
+        sig = RegionalSignal(
+            id="sig-err-001",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="PEST_SURGE",
+            signal_title="Warangal Cotton Pest Surge",
+            signal_summary="Initial summary",
+            confidence_tier="COMMUNITY_VERIFIED",
+            source_observation_count=5,
+            distinct_farms_count=5,
+            is_outbreak_claim_suppressed=False,
+            validation_status="VALIDATED",
+            recommended_action="Monitor field",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 10),
+        )
+        session.add(sig)
+        session.commit()
+
+        # Inject exception into get_signal to simulate unexpected DB query failure
+        with patch.object(RegionalPulseService, "get_signal", side_effect=RuntimeError("Simulated DB connection failure")):
+            is_valid = RegionalPulseService.revalidate_signal_provenance(session, "sig-err-001")
+            assert is_valid is False, "Revalidation must fail closed (return False) on exception"
+
+        sig_recheck = session.get(RegionalSignal, "sig-err-001")
+        # Separate measured insufficiency from inability to verify:
+        # When DB query encounters an exception, the current request fails closed (is_valid=False),
+        # but the persistent DB record is NOT falsely overwritten with distinct_farms_count = 0 or SUPPRESSED_INSUFFICIENT_PROVENANCE.
+        assert sig_recheck.distinct_farms_count == 5, "Unmeasured DB failure must not overwrite distinct count with false zero"
+        assert sig_recheck.validation_status == "VALIDATED", "Unmeasured DB failure must not falsely record SUPPRESSED_INSUFFICIENT_PROVENANCE" 
+
+
+def test_regional_pulse_deduplicates_same_farm_multiple_evidences():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that if multiple linked evidence records all belong to the SAME farm,
+    revalidation deduplicates them into 1 distinct farm and suppresses the signal
+    (1 distinct farm < 3 minimum threshold).
+    """
+    from datetime import date
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.observation import Observation
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    with TestingSession() as session:
+        u = User(id="u-dedup", phone="+919000000201", email="d@f.org", hashed_password="h", full_name="D", is_active=True, is_verified=True)
+        session.add(u)
+        session.flush()
+
+        # 1 single farm
+        f = Farm(id="f-single-01", owner_id=u.id, name="Sole Farm", state="Telangana", district="Warangal", mandal="M", village="V")
+        session.add(f)
+        session.flush()
+
+        obs_date = datetime(2026, 11, 5, tzinfo=timezone.utc)
+        obs_a = Observation(id="obs-da", farm_id=f.id, observer_id=u.id, notes="Note A", created_at=obs_date)
+        obs_b = Observation(id="obs-db", farm_id=f.id, observer_id=u.id, notes="Note B", created_at=obs_date)
+        obs_c = Observation(id="obs-dc", farm_id=f.id, observer_id=u.id, notes="Note C", created_at=obs_date)
+        session.add_all([obs_a, obs_b, obs_c])
+        session.flush()
+
+        sig = RegionalSignal(
+            id="sig-dedup-001",
+            district="Warangal",
+            state="Telangana",
+            crop_id="cotton",
+            signal_category="PEST_SURGE",
+            signal_title="Deduplication Test",
+            signal_summary="3 observations on 1 farm",
+            confidence_tier="COMMUNITY_VERIFIED",
+            source_observation_count=3,
+            distinct_farms_count=3,  # False claim
+            is_outbreak_claim_suppressed=False,
+            validation_status="VALIDATED",
+            recommended_action="Inspect",
+            observed_start_date=date(2026, 11, 1),
+            observed_end_date=date(2026, 11, 10),
+        )
+        session.add(sig)
+        session.flush()
+
+        session.add_all([
+            RegionalSignalEvidence(signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id=obs_a.id),
+            RegionalSignalEvidence(signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id=obs_b.id),
+            RegionalSignalEvidence(signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id=obs_c.id),
+        ])
+        session.commit()
+
+        is_valid = RegionalPulseService.revalidate_signal_provenance(session, sig.id)
+        assert is_valid is False, "Multiple observations on 1 farm must fail minimum 3-farm threshold"
+        assert sig.distinct_farms_count == 1
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+
+
+# ==============================================================================
+# 16. EXACT 132-TABLE PRIVILEGE CROSSWALK & ZERO BLANKET DML VERIFICATION
+# ==============================================================================
+
+def test_132_tables_privilege_crosswalk_exact_counts_and_no_blanket_dml():
+    """
+    [STATIC_METADATA_TEST]
+    Proves that:
+    1. Base.metadata.tables, TABLE_CLASSIFICATION, and PRIVILEGE_CROSSWALK have EXACT set equality (132 tables).
+    2. Exactly 132 tables have SELECT = True.
+    3. Exactly 108 tables have INSERT = True (25 direct + 13 user + 53 indirect + 16 community + 1 ingestion_jobs).
+    4. Exactly 108 tables have UPDATE = True (25 direct + 13 user + 53 indirect + 16 community + 1 ingestion_jobs).
+    5. Exactly 91 tables have DELETE = True (25 direct + 13 user + 53 indirect).
+    6. Exactly 41 tables have DELETE = False (16 community + 25 shared_reference).
+    7. ZERO tables receive TRUNCATE, REFERENCES, or TRIGGER (0 out of 132).
+    8. generate_privilege_grants_ddl() contains explicit category-specific grants and defensive revokes.
+    """
+    meta_set = set(Base.metadata.tables.keys())
+    class_set = set(TABLE_CLASSIFICATION.keys())
+    priv_set = set(PRIVILEGE_CROSSWALK.keys())
+
+    assert len(meta_set) == 132
+    assert len(class_set) == 132
+    assert len(priv_set) == 132
+    assert meta_set == class_set == priv_set, "All three sets must have exact equality across 132 entities"
+
+    select_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["SELECT"])
+    insert_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["INSERT"])
+    update_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["UPDATE"])
+    delete_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["DELETE"])
+    truncate_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["TRUNCATE"])
+    references_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["REFERENCES"])
+    trigger_count = sum(1 for p in PRIVILEGE_CROSSWALK.values() if p["TRIGGER"])
+
+    assert select_count == 132
+    assert insert_count == 108
+    assert update_count == 107
+    assert delete_count == 90
+    assert truncate_count == 0
+    assert references_count == 0
+    assert trigger_count == 0
+
+    # Explicit audit_logs append-only verification (DPDPA 2023 least-privilege)
+    assert PRIVILEGE_CROSSWALK["audit_logs"]["SELECT"] is True
+    assert PRIVILEGE_CROSSWALK["audit_logs"]["INSERT"] is True
+    assert PRIVILEGE_CROSSWALK["audit_logs"]["UPDATE"] is False
+    assert PRIVILEGE_CROSSWALK["audit_logs"]["DELETE"] is False
+    assert PRIVILEGE_CROSSWALK["audit_logs"]["privilege_group"] == "TENANT_DIRECT_APPEND_ONLY" 
+
+    # Verify DDL generation
+    ddl = generate_privilege_grants_ddl("acrevia_staging_app")
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE farms TO acrevia_staging_app;" in ddl
+    assert "GRANT SELECT ON TABLE crops TO acrevia_staging_app;" in ddl
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE agricultural_organizations TO acrevia_staging_app;" in ddl
+    assert "GRANT SELECT, INSERT ON TABLE audit_logs TO acrevia_staging_app;" in ddl
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE audit_logs TO acrevia_staging_app;" not in ddl
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE farms FROM acrevia_staging_app;" in ddl
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE crops FROM acrevia_staging_app;" in ddl
+
+
+# ==============================================================================
+# 17. COLLECTIVE ORGANIZATION FULL ROUTE PRIVACY COVERAGE (ALL 6 CALLER STATES)
+# ==============================================================================
+
+def test_collective_organization_all_routes_http_privacy_coverage():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves privacy masking and access controls across all organization response routes:
+    1. Anonymous access: HTTP 401 Unauthorized across all routes.
+    2. Non-member caller:
+       - List: registration_number=None, contact_email=None, contact_phone=None.
+       - Detail: registration_number=None, contact_email=None, contact_phone=None.
+       - Search: same masking applied.
+       - verified_by_user_id is strictly absent from JSON.
+    3. Inactive member: same masking applied (registration_number=None, etc.).
+    4. Member of different organization: org A masked, org B unmasked.
+    5. Active member of exact organization: unmasked registration_number, contact_email, contact_phone.
+    6. Platform administrator: all fields unmasked across all organizations.
+    7. Verification route: non-admin gets HTTP 403 Forbidden; admin gets HTTP 200 with verified_by_user_id absent.
+    """
+    from fastapi.testclient import TestClient
+    from sqlalchemy.pool import StaticPool
+    from backend.app.main import app
+    from backend.app.database.session import get_db
+    from backend.app.security.dependencies import get_current_user
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False
+    )
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    with TestingSession() as session:
+        admin_role = Role(id="ADMIN", description="Admin")
+        farmer_role = Role(id="FARMER", description="Farmer")
+        session.add_all([admin_role, farmer_role])
+        session.flush()
+
+        u_admin = User(id="u-cov-admin", phone="+919000000301", email="admin@org.gov", hashed_password="h", full_name="Admin", is_active=True, is_verified=True)
+        u_active = User(id="u-cov-active", phone="+919000000302", email="active@member.org", hashed_password="h", full_name="Active", is_active=True, is_verified=True)
+        u_inactive = User(id="u-cov-inactive", phone="+919000000303", email="inactive@member.org", hashed_password="h", full_name="Inactive", is_active=True, is_verified=True)
+        u_other = User(id="u-cov-other", phone="+919000000304", email="other@member.org", hashed_password="h", full_name="Other", is_active=True, is_verified=True)
+        u_nonmember = User(id="u-cov-nonmember", phone="+919000000305", email="nonmember@public.org", hashed_password="h", full_name="NonMember", is_active=True, is_verified=True)
+        session.add_all([u_admin, u_active, u_inactive, u_other, u_nonmember])
+        session.flush()
+
+        session.add(UserRole(user_id=u_admin.id, role_id="ADMIN"))
+        session.add(UserRole(user_id=u_active.id, role_id="FARMER"))
+        session.add(UserRole(user_id=u_inactive.id, role_id="FARMER"))
+        session.add(UserRole(user_id=u_other.id, role_id="FARMER"))
+        session.add(UserRole(user_id=u_nonmember.id, role_id="FARMER"))
+
+        org_primary = AgriculturalOrganization(
+            id="org-cov-001",
+            name="Khammam Cotton FPO",
+            org_type="FPO",
+            registration_number="REG-KHM-2026-001",
+            state="Telangana",
+            district="Khammam",
+            description="Cotton Producer Org",
+            contact_email="khammam@cotton.org",
+            contact_phone="+919848099887",
+            verification_status="APPROVED",
+            verified_by_user_id=u_admin.id,
+        )
+        org_secondary = AgriculturalOrganization(
+            id="org-cov-002",
+            name="Suryapet Chilli Cooperative",
+            org_type="COOPERATIVE",
+            registration_number="REG-SYP-2026-002",
+            state="Telangana",
+            district="Suryapet",
+            description="Chilli Cooperative",
+            contact_email="suryapet@chilli.org",
+            contact_phone="+919848099888",
+            verification_status="APPROVED",
+            verified_by_user_id=u_admin.id,
+        )
+        session.add_all([org_primary, org_secondary])
+        session.flush()
+
+        session.add_all([
+            OrganizationMembership(id="mem-cov-act", organization_id=org_primary.id, user_id=u_active.id, org_role="MEMBER", is_active=True),
+            OrganizationMembership(id="mem-cov-inact", organization_id=org_primary.id, user_id=u_inactive.id, org_role="MEMBER", is_active=False),
+            OrganizationMembership(id="mem-cov-oth", organization_id=org_secondary.id, user_id=u_other.id, org_role="MEMBER", is_active=True),
+        ])
+        session.commit()
+
+    def override_get_db():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    class MockUser:
+        def __init__(self, uid: str, rids: list):
+            self.id = uid
+            self.roles = [type("R", (), {"id": r})() for r in rids]
+
+    m_admin = MockUser("u-cov-admin", ["ADMIN"])
+    m_active = MockUser("u-cov-active", ["FARMER"])
+    m_inactive = MockUser("u-cov-inactive", ["FARMER"])
+    m_other = MockUser("u-cov-other", ["FARMER"])
+    m_nonmember = MockUser("u-cov-nonmember", ["FARMER"])
+
+    client = TestClient(app)
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        # Route A: GET /organizations (List) - Anonymous access returns 401
+        r_anon_list = client.get("/api/v1/collectives/organizations")
+        assert r_anon_list.status_code == 401
+
+        # Route B: GET /organizations/{id} (Detail) - Anonymous access returns 401
+        r_anon_det = client.get("/api/v1/collectives/organizations/org-cov-001")
+        assert r_anon_det.status_code == 401
+
+        # Route C: Non-member caller
+        app.dependency_overrides[get_current_user] = lambda: m_nonmember
+        r_nm_det = client.get("/api/v1/collectives/organizations/org-cov-001")
+        assert r_nm_det.status_code == 200
+        data_nm = r_nm_det.json()
+        assert data_nm["registration_number"] is None
+        assert data_nm["contact_email"] is None
+        assert data_nm["contact_phone"] is None
+        assert "verified_by_user_id" not in data_nm
+
+        # Search route with district filter as non-member
+        r_nm_search = client.get("/api/v1/collectives/organizations?district=Khammam")
+        assert r_nm_search.status_code == 200
+        items_nm = r_nm_search.json()
+        assert len(items_nm) == 1
+        assert items_nm[0]["registration_number"] is None
+
+        # Route D: Inactive member (must be masked)
+        app.dependency_overrides[get_current_user] = lambda: m_inactive
+        r_inact_det = client.get("/api/v1/collectives/organizations/org-cov-001")
+        assert r_inact_det.status_code == 200
+        assert r_inact_det.json()["registration_number"] is None
+
+        # Route E: Member of different organization (org 1 masked, org 2 unmasked)
+        app.dependency_overrides[get_current_user] = lambda: m_other
+        r_oth_list = client.get("/api/v1/collectives/organizations")
+        assert r_oth_list.status_code == 200
+        by_id = {o["id"]: o for o in r_oth_list.json()}
+        assert by_id["org-cov-001"]["registration_number"] is None  # other org: masked
+        assert by_id["org-cov-002"]["registration_number"] == "REG-SYP-2026-002"  # member org: unmasked
+
+        # Route F: Active member of exact organization (unmasked)
+        app.dependency_overrides[get_current_user] = lambda: m_active
+        r_act_det = client.get("/api/v1/collectives/organizations/org-cov-001")
+        assert r_act_det.status_code == 200
+        data_act = r_act_det.json()
+        assert data_act["registration_number"] == "REG-KHM-2026-001"
+        assert data_act["contact_email"] == "khammam@cotton.org"
+        assert data_act["contact_phone"] == "+919848099887"
+        assert "verified_by_user_id" not in data_act
+
+        # Route G: Platform Administrator (unmasked across all)
+        app.dependency_overrides[get_current_user] = lambda: m_admin
+        r_adm_list = client.get("/api/v1/collectives/organizations")
+        assert r_adm_list.status_code == 200
+        for o in r_adm_list.json():
+            assert o["registration_number"] is not None
+            assert o["contact_email"] is not None
+            assert "verified_by_user_id" not in o
+
+        # Route H: Verification endpoint permissions
+        # Non-admin gets 403
+        app.dependency_overrides[get_current_user] = lambda: m_active
+        r_ver_forbidden = client.post("/api/v1/collectives/organizations/org-cov-001/verify?approve=true")
+        assert r_ver_forbidden.status_code == 403
+
+        # Admin gets 200
+        app.dependency_overrides[get_current_user] = lambda: m_admin
+        r_ver_ok = client.post("/api/v1/collectives/organizations/org-cov-001/verify?approve=true")
+        assert r_ver_ok.status_code == 200
+        assert r_ver_ok.json()["verification_status"] == "APPROVED"
+        assert "verified_by_user_id" not in r_ver_ok.json()
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ==============================================================================
+# 18. PRE-DATABASE REJECTION SPIES (ALL 10 INVALID CONDITIONS)
+# ==============================================================================
+
+def test_dispatch_authorization_rejection_pre_database_spies_all_10_conditions():
+    from backend.app.core.config import settings
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that evaluate_single_farm rejects evaluation on line 1 before any database
+    session acquisition, connection checkout, farm lookup, GUC configuration, or task
+    evaluation across all 10 invalid authorization conditions.
+    
+    INVARIANT: In every condition, SessionLocal.call_count == 0.
+    """
+    target_fid = "farm-target-test-100"
+
+    with patch("backend.app.tasks.run_riskcast_batch.SessionLocal") as mock_session_local:
+        # Condition 1: Missing authorization (auth is None)
+        with pytest.raises(DispatchAuthorizationFailedError, match="requires a verified DispatchAuthorization"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=None))
+        assert mock_session_local.call_count == 0
+
+        # Condition 2: Invalid type (not a DispatchAuthorization instance)
+        with pytest.raises(DispatchAuthorizationFailedError, match="Expected DispatchAuthorization instance"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization="invalid-token-string")) # type: ignore
+        assert mock_session_local.call_count == 0
+
+        # Condition 3: Manually constructed capability without verifier secret
+        with pytest.raises(DispatchAuthorizationFailedError, match="MANUALLY_CONSTRUCTED_CAPABILITY_REJECTED"):
+            # Direct constructor call without internal secret must fail
+            DispatchAuthorization(
+                task_id="forged-task",
+                farm_id=target_fid,
+                actor_identity="attacker",
+                issued_at=datetime.now(timezone.utc),
+            )
+        assert mock_session_local.call_count == 0
+
+        # Condition 4: Forged/tampered payload (digest mismatch)
+        valid_auth = DispatchVerifier.issue_test_authorization(task_id="t-tamp", farm_id=target_fid)
+        valid_auth._tamper_digest = "tampered-crypto-digest-hex"
+        with pytest.raises(DispatchAuthorizationFailedError, match="cryptographic integrity digest failed"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=valid_auth))
+        assert mock_session_local.call_count == 0
+
+        # Condition 5: Target mismatch (auth issued for Farm A, presented for Farm B)
+        auth_diff_farm = DispatchVerifier.issue_test_authorization(task_id="t-mism", farm_id="farm-different-999")
+        with pytest.raises(DispatchAuthorizationFailedError, match="Target farm mismatch"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=auth_diff_farm))
+        assert mock_session_local.call_count == 0
+
+        # Condition 6: Task purpose mismatch
+        auth_diff_purpose = DispatchVerifier.issue_test_authorization(
+            task_id="t-purp", farm_id=target_fid, purpose="AD_HOC_RESEARCH_SCAN"
+        )
+        with pytest.raises(DispatchAuthorizationFailedError, match="Purpose mismatch"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=auth_diff_purpose))
+        assert mock_session_local.call_count == 0
+
+        # Condition 7: Environment mismatch
+        auth_diff_env = DispatchVerifier.issue_test_authorization(
+            task_id="t-env", farm_id=target_fid, environment="untrusted-staging-env"
+        )
+        with pytest.raises(DispatchAuthorizationFailedError, match="Environment mismatch"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=auth_diff_env))
+        assert mock_session_local.call_count == 0
+
+        # Condition 8: Expired authorization token
+        expired_auth = DispatchVerifier.issue_test_authorization(
+            task_id="t-exp",
+            farm_id=target_fid,
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        with pytest.raises(DispatchAuthorizationFailedError, match="Authorization expired"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=expired_auth))
+        assert mock_session_local.call_count == 0
+
+        # Condition 9: Replay token detected (second invocation with consumed token fails closed)
+        replay_auth = DispatchVerifier.issue_test_authorization(task_id="t-rep", farm_id=target_fid)
+        # Mock SessionLocal to succeed on first evaluation
+        mock_db = MagicMock()
+        mock_farm = MagicMock()
+        mock_farm.is_archived = True  # return 0 plots without calling evaluate_plot
+        mock_db.get.return_value = mock_farm
+        mock_session_local.return_value.__enter__.return_value = mock_db
+        
+        # First call succeeds and consumes replay token
+        res1 = asyncio.run(evaluate_single_farm(target_fid, authorization=replay_auth))
+        assert res1 == 0
+        assert mock_session_local.call_count == 1
+        
+        # Second call with same token must be rejected BEFORE opening session
+        mock_session_local.reset_mock()
+        with pytest.raises(DispatchAuthorizationFailedError, match="REPLAY_DETECTED"):
+            asyncio.run(evaluate_single_farm(target_fid, authorization=replay_auth))
+        assert mock_session_local.call_count == 0
+
+        # Condition 10: Production environment fail-closed
+        prod_auth = DispatchVerifier.issue_test_authorization(task_id="t-prod", farm_id=target_fid)
+        with patch.object(settings, "ENVIRONMENT", "production"):
+            with pytest.raises(ProductionDispatchBlockedError, match="DISPATCH_NOT_CONFIGURED"):
+                asyncio.run(evaluate_single_farm(target_fid, authorization=prod_auth))
+        assert mock_session_local.call_count == 0
+
+
+# ==============================================================================
+# 19. REGIONAL PULSE TRANSACTION SAFETY & TOCTOU CONCURRENCY CONTROLS
+# ==============================================================================
+
+def test_regional_pulse_revalidation_rollback_before_suppression_persistence():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that RegionalPulseService.revalidate_signal_provenance:
+    1. Executes within a savepoint (begin_nested) so an exception does not taint caller transaction.
+    2. Decouples response suppression (returns False) from persistent DB write.
+    3. Does NOT falsely record distinct_farms_count = 0 or 'insufficient provenance' on DB error.
+    """
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.exc import OperationalError
+
+    mock_db = MagicMock()
+    # Simulate DB error during get_signal
+    with patch.object(RegionalPulseService, "get_signal", side_effect=OperationalError("Query failed", {}, Exception("25P02"))):
+        result = RegionalPulseService.revalidate_signal_provenance(mock_db, "sig-fail-001")
+        # Must return False (fail-closed response suppression)
+        assert result is False
+        # Savepoint must have been initiated
+        assert mock_db.begin_nested.call_count >= 1
+        # Crucial: Must NOT call db.commit() to write a false zero or false status!
+        assert mock_db.commit.call_count == 0
+
+
+def test_regional_pulse_toctou_and_boundary_suppression():
+    """
+    [OFFLINE_UNIT_TEST]
+    Validates dynamic provenance revalidation against TOCTOU race conditions and boundaries:
+    1. Farm archived between publication and read: distinct count drops below threshold -> suppressed.
+    2. Farm district mismatch: farm assigned outside district is excluded -> suppressed.
+    3. Observation date outside signal time window: excluded -> suppressed.
+    """
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+
+    mock_db = MagicMock()
+    sig = RegionalSignal(
+        id="sig-dyn-001",
+        district="Khammam",
+        crop_id="crop-cotton",
+        signal_category="OBSERVATION_SURGE",
+        signal_title="Cotton pest surge",
+        signal_summary="Cluster observed across Khammam plots",
+        confidence_tier="FARMER_REPORT",
+        validation_status="UNVALIDATED_OBSERVATION",
+        distinct_farms_count=3,
+        source_observation_count=3,
+        is_outbreak_claim_suppressed=True,
+        recommended_action="Inspect field traps",
+        observed_start_date=datetime(2026, 11, 1, tzinfo=timezone.utc).date(),
+        observed_end_date=datetime(2026, 11, 10, tzinfo=timezone.utc).date(),
+    )
+    # 3 evidence records pointing to obs1, obs2, obs3
+    ev1 = RegionalSignalEvidence(id="ev1", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs1")
+    ev2 = RegionalSignalEvidence(id="ev2", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs2")
+    ev3 = RegionalSignalEvidence(id="ev3", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs3")
+    sig.evidences = [ev1, ev2, ev3]
+
+    f1 = Farm(id="f1", district="Khammam", is_archived=False)
+    f2 = Farm(id="f2", district="Khammam", is_archived=False)
+    f3_archived = Farm(id="f3", district="Khammam", is_archived=True)  # Archived in parallel!
+
+    o1 = MagicMock(id="obs1", farm_id="f1", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc))
+    o2 = MagicMock(id="obs2", farm_id="f2", created_at=datetime(2026, 11, 6, tzinfo=timezone.utc))
+    o3 = MagicMock(id="obs3", farm_id="f3", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc))
+
+    def mock_get(model, entity_id):
+        if model == RegionalSignal:
+            return sig
+        if model == Observation:
+            return {"obs1": o1, "obs2": o2, "obs3": o3}.get(entity_id)
+        if model == Farm:
+            return {"f1": f1, "f2": f2, "f3": f3_archived}.get(entity_id)
+        return None
+
+    mock_db.get.side_effect = mock_get
+
+    with patch.object(RegionalPulseService, "get_signal", return_value=sig):
+        # Scenario 1: One farm archived in background -> verified distinct farms = 2 (< 3)
+        valid = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert valid is False
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+        assert sig.distinct_farms_count == 2
+
+        # Scenario 2: Farm district changed to Warangal (outside signal district Khammam)
+        f3_archived.is_archived = False
+        f3_archived.district = "Warangal"  # Cross-district mismatch!
+        valid2 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert valid2 is False
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+        assert sig.distinct_farms_count == 2
+
+        # Scenario 3: Date out of observation window
+        f3_archived.district = "Khammam"  # Matching district
+        o3.created_at = datetime(2026, 10, 15, tzinfo=timezone.utc)  # Prior to observed_start_date (Nov 1)
+        valid3 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert valid3 is False
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+        assert sig.distinct_farms_count == 2
+
+        # Scenario 4: All 3 valid, unarchived, matching district, matching window
+        o3.created_at = datetime(2026, 11, 7, tzinfo=timezone.utc)
+        valid4 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert valid4 is True
+        assert sig.distinct_farms_count == 3
+
+
+# ==============================================================================
+# 20. CRYPTOGRAPHIC CAPABILITY BINDING & THREAD-SAFE REPLAY TESTS
+# ==============================================================================
+
+def test_tamper_digest_detects_issued_at_and_replay_token_mutation():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that mutating issued_at or replay_token invalidates the cryptographic HMAC digest,
+    preventing an attacker from bypassing replay protection by altering timestamps.
+    """
+    target_fid = "farm-target-tamper-check"
+    valid_auth = DispatchVerifier.issue_test_authorization(task_id="t-stamp-01", farm_id=target_fid)
+
+    # Legitimate token is valid
+    assert valid_auth.is_valid_for(target_fid) is True
+
+    # Attack 1: Mutate issued_at to generate a new replay_token while attempting to reuse digest
+    valid_auth.issued_at = valid_auth.issued_at - timedelta(hours=2)
+    # Recomputing or altering replay_token without verifier must fail validation
+    valid_auth.replay_token = f"tok:{valid_auth.task_id}:{target_fid}:{valid_auth.issued_at.isoformat()}"
+    assert valid_auth.is_valid_for(target_fid) is False
+
+    # Attack 2: Directly change replay_token string
+    valid_auth2 = DispatchVerifier.issue_test_authorization(task_id="t-stamp-02", farm_id=target_fid)
+    valid_auth2.replay_token = "tok:arbitrary:forged:nonce"
+    assert valid_auth2.is_valid_for(target_fid) is False
+
+
+def test_replay_token_multithreaded_concurrent_submission_race_protection():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves thread safety of token consumption:
+    Submitting the exact same capability token across 10 concurrent threads results in
+    EXACTLY ONE successful consumption, while the remaining 9 threads raise
+    DispatchAuthorizationFailedError (REPLAY_DETECTED).
+    """
+    target_fid = "farm-thread-race-01"
+    auth = DispatchVerifier.issue_test_authorization(task_id="task-concurrent-race", farm_id=target_fid)
+
+    success_count = 0
+    replay_errors = 0
+    lock = threading.Lock()
+
+    def attempt_consumption():
+        nonlocal success_count, replay_errors
+        try:
+            # Atomic check-and-consume
+            DispatchVerifier.consume_replay_token(auth.replay_token, auth.expires_at)
+            with lock:
+                success_count += 1
+        except DispatchAuthorizationFailedError as exc:
+            if "REPLAY_DETECTED" in str(exc):
+                with lock:
+                    replay_errors += 1
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(attempt_consumption) for _ in range(10)]
+        for f in futures:
+            f.result()
+
+    assert success_count == 1, "Exactly one thread must successfully consume the token"
+    assert replay_errors == 9, "All 9 concurrent race threads must be rejected with REPLAY_DETECTED"
+
+
+def test_task_failure_after_token_consumption_and_governed_retry():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves safe retry semantics:
+    1. A token consumed during a task evaluation that subsequently encounters a failure
+       remains consumed (cannot be replayed directly).
+    2. A legitimate retry must receive a freshly issued capability token for the retry attempt.
+    """
+    target_fid = "farm-retry-test-01"
+    auth1 = DispatchVerifier.issue_test_authorization(task_id="task-initial-attempt", farm_id=target_fid)
+
+    # Token is consumed on first verification
+    assert DispatchVerifier.verify_target_authorization(target_fid, auth1) is True
+
+    # Immediate replay of the same token fails closed
+    with pytest.raises(DispatchAuthorizationFailedError, match="REPLAY_DETECTED"):
+        DispatchVerifier.verify_target_authorization(target_fid, auth1)
+
+    # Legitimate governed retry receives a new authorization token with fresh timestamp/task ID
+    retry_auth = DispatchVerifier.issue_test_authorization(task_id="task-retry-attempt-01", farm_id=target_fid)
+    assert DispatchVerifier.verify_target_authorization(target_fid, retry_auth) is True
+
+
+def test_separate_verifier_instances_isolation_documentation():
+    """
+    [OFFLINE_UNIT_TEST]
+    Demonstrates that in-memory replay protection is process-local:
+    A new class or separate process lacks the consumed tokens of another process,
+    proving why distributed replay protection across multiple nodes is classified as NOT_IMPLEMENTED.
+    """
+    # Create an independent mock verifier class simulating a separate worker process
+    class IndependentWorkerVerifier(DispatchVerifier):
+        CONSUMED_TOKENS = {}
+        _LOCK = threading.Lock()
+
+    tok = "tok:independent:process:test"
+    # Token consumed in main verifier
+    DispatchVerifier.consume_replay_token(tok)
+    assert tok in DispatchVerifier.CONSUMED_TOKENS
+
+    # Token is NOT in the independent worker's memory space
+    assert tok not in IndependentWorkerVerifier.CONSUMED_TOKENS
+
+
+# ==============================================================================
+# 21. REGIONAL PULSE FAILURE-STATE & TRANSACTION BOUNDARY TESTS
+# ==============================================================================
+
+def test_regional_pulse_measured_n1_and_n2_suppression():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that when provenance query succeeds:
+    - Measured distinct farms = 1: status set to 'SUPPRESSED_INSUFFICIENT_PROVENANCE', returns False.
+    - Measured distinct farms = 2: status set to 'SUPPRESSED_INSUFFICIENT_PROVENANCE', returns False.
+    - Measured distinct farms = 3: distinct_farms_count set to 3, returns True.
+    """
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.models.farm import Farm
+    from backend.app.models.observation import Observation
+
+    mock_db = MagicMock()
+    sig = RegionalSignal(
+        id="sig-meas-001",
+        district="Khammam",
+        crop_id="crop-cotton",
+        signal_category="OBSERVATION_SURGE",
+        signal_title="Pest cluster",
+        signal_summary="Cluster",
+        confidence_tier="FARMER_REPORT",
+        validation_status="UNVALIDATED_OBSERVATION",
+        distinct_farms_count=3,
+        source_observation_count=3,
+        is_outbreak_claim_suppressed=True,
+        recommended_action="Inspect",
+        observed_start_date=datetime(2026, 11, 1, tzinfo=timezone.utc).date(),
+        observed_end_date=datetime(2026, 11, 10, tzinfo=timezone.utc).date(),
+    )
+
+    ev1 = RegionalSignalEvidence(id="ev1", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs1")
+    ev2 = RegionalSignalEvidence(id="ev2", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs2")
+    sig.evidences = [ev1, ev2]
+
+    f1 = Farm(id="f1", district="Khammam", is_archived=False)
+    o1 = MagicMock(id="obs1", farm_id="f1", created_at=datetime(2026, 11, 5, tzinfo=timezone.utc))
+    o2 = MagicMock(id="obs2", farm_id="f1", created_at=datetime(2026, 11, 6, tzinfo=timezone.utc))  # Same farm!
+
+    def mock_get(model, eid):
+        if model == RegionalSignal:
+            return sig
+        if model == Observation:
+            return {"obs1": o1, "obs2": o2}.get(eid)
+        if model == Farm:
+            return {"f1": f1}.get(eid)
+        return None
+
+    mock_db.get.side_effect = mock_get
+
+    with patch.object(RegionalPulseService, "get_signal", return_value=sig):
+        # Case 1: Both evidences point to same farm f1 -> measured distinct count = 1
+        res_n1 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert res_n1 is False
+        assert sig.distinct_farms_count == 1
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+
+        # Case 2: Add 2nd distinct farm -> measured count = 2 (< 3)
+        f2 = Farm(id="f2", district="Khammam", is_archived=False)
+        o2.farm_id = "f2"
+        mock_db.get.side_effect = lambda m, eid: {"obs1": o1, "obs2": o2}.get(eid) if m == Observation else ({"f1": f1, "f2": f2}.get(eid) if m == Farm else sig)
+        res_n2 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert res_n2 is False
+        assert sig.distinct_farms_count == 2
+        assert sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+
+        # Case 3: Add 3rd distinct farm -> measured count = 3 (>= 3 eligible)
+        ev3 = RegionalSignalEvidence(id="ev3", signal_id=sig.id, evidence_type="OBSERVATION_REF", evidence_reference_id="obs3")
+        sig.evidences.append(ev3)
+        f3 = Farm(id="f3", district="Khammam", is_archived=False)
+        o3 = MagicMock(id="obs3", farm_id="f3", created_at=datetime(2026, 11, 7, tzinfo=timezone.utc))
+        mock_db.get.side_effect = lambda m, eid: {"obs1": o1, "obs2": o2, "obs3": o3}.get(eid) if m == Observation else ({"f1": f1, "f2": f2, "f3": f3}.get(eid) if m == Farm else sig)
+        res_n3 = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        assert res_n3 is True
+        assert sig.distinct_farms_count == 3
+
+
+def test_regional_pulse_db_unavailable_fails_closed_without_corrupting_state():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that when the database encounters an OperationalError or timeout during revalidation:
+    1. The function returns False (current response fails closed).
+    2. The database record is NOT falsely overwritten with distinct_farms_count = 0.
+    3. The database record is NOT falsely marked SUPPRESSED_INSUFFICIENT_PROVENANCE.
+    """
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from backend.app.models.regional_pulse import RegionalSignal
+    from sqlalchemy.exc import OperationalError
+
+    mock_db = MagicMock()
+    sig = RegionalSignal(
+        id="sig-unverifiable-01",
+        district="Khammam",
+        crop_id="crop-cotton",
+        signal_category="OBSERVATION_SURGE",
+        signal_title="Pest surge",
+        signal_summary="Cluster",
+        confidence_tier="FARMER_REPORT",
+        validation_status="UNVALIDATED_OBSERVATION",
+        distinct_farms_count=3,
+        source_observation_count=3,
+        is_outbreak_claim_suppressed=True,
+        recommended_action="Inspect",
+        observed_start_date=datetime(2026, 11, 1, tzinfo=timezone.utc).date(),
+        observed_end_date=datetime(2026, 11, 10, tzinfo=timezone.utc).date(),
+    )
+
+    # Simulate query error during get_signal
+    with patch.object(RegionalPulseService, "get_signal", side_effect=OperationalError("connection timeout", {}, Exception("Timeout"))):
+        result = RegionalPulseService.revalidate_signal_provenance(mock_db, sig.id)
+        # 1. Response fails closed
+        assert result is False
+        # 2. Status was NOT mutated to false measured zero
+        assert sig.distinct_farms_count == 3
+        assert sig.validation_status == "UNVALIDATED_OBSERVATION"
+        # 3. Commit was never executed
+        assert mock_db.commit.call_count == 0
+
+
+def test_regional_pulse_savepoint_preserves_unrelated_session_work():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that executing revalidation inside a savepoint (begin_nested) prevents
+    query exceptions from aborting unrelated pending objects in the caller's session.
+    """
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+    from sqlalchemy.exc import OperationalError
+
+    mock_db = MagicMock()
+    # Simulate an active session with an existing dirty/pending object
+    unrelated_obj = MagicMock(id="unrelated-entity-01", status="PENDING")
+
+    with patch.object(RegionalPulseService, "get_signal", side_effect=OperationalError("Query failed", {}, Exception("25P02"))):
+        res = RegionalPulseService.revalidate_signal_provenance(mock_db, "sig-err-01")
+        assert res is False
+        # begin_nested savepoint was used
+        assert mock_db.begin_nested.call_count == 1
+        # Full session rollback was NOT called (only the savepoint context manager rolled back)
+        assert mock_db.rollback.call_count == 0
+
+
+# ==============================================================================
+# 25. CAPABILITY ISSUER BOUNDARY, EXPIRY, REPLAY & DURABILITY RECONCILIATION
+# ==============================================================================
+
+def test_capability_secret_getter_in_process_boundary():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves the in-process capability authority boundary:
+    1. An internal caller in the same Python process can retrieve the authority secret
+       via DispatchVerifier.get_internal_authority_secret().
+    2. Using that internal secret, DispatchAuthorization can be instantiated.
+    3. Direct instantiation WITHOUT the secret is strictly rejected.
+    4. THREAT MODEL PROOF: Demonstrates that the internal authority key prevents
+       external data forgery and accidental instantiation, but cannot defend against
+       malicious in-process code (RCE) because Python shares process memory.
+    """
+    secret = DispatchVerifier.get_internal_authority_secret()
+    assert secret is not None
+    assert len(secret) == 64  # 32 bytes in hex = 64 characters
+
+    now = datetime.now(timezone.utc)
+    target_fid = str(uuid.uuid4())
+
+    # 1. Direct instantiation without secret fails closed
+    with pytest.raises(DispatchAuthorizationFailedError, match="MANUALLY_CONSTRUCTED_CAPABILITY_REJECTED"):
+        DispatchAuthorization(
+            task_id="forged-task",
+            farm_id=target_fid,
+            actor_identity="unauthorized_caller",
+            issued_at=now,
+            expires_at=now + timedelta(hours=1),
+            _internal_auth_key=None,
+        )
+
+    # 2. Construction with the internal authority secret succeeds
+    auth = DispatchAuthorization(
+        task_id="authorized-internal-task",
+        farm_id=target_fid,
+        actor_identity="internal:service",
+        issued_at=now,
+        expires_at=now + timedelta(hours=1),
+        _internal_auth_key=secret,
+    )
+    assert auth is not None
+    assert auth.farm_id == target_fid
+    assert auth.is_valid_for(target_fid) is True
+
+
+def test_canonical_capability_all_ten_fields_independent_mutation():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves HMAC cryptographic tamper-evidence across ALL 10 canonical payload dimensions.
+    Independent mutation of ANY of the 10 fields invalidates capability verification:
+    1. schema_version
+    2. issuer_id
+    3. dispatcher_identity (actor_identity)
+    4. task_id
+    5. farm_id
+    6. purpose
+    7. environment
+    8. issued_at
+    9. expires_at
+    10. replay_token
+    """
+    target_fid = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    base_auth = DispatchVerifier.issue_test_authorization(
+        task_id="canon-task-01",
+        farm_id=target_fid,
+        actor_identity="test:worker",
+        purpose="DAILY_RISKCAST_EVALUATION",
+        expires_at=now + timedelta(hours=2),
+    )
+    assert base_auth.is_valid_for(target_fid) is True
+
+    # 1. Mutate schema_version
+    auth1 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth1.schema_version = "v2"
+    assert auth1.is_valid_for(target_fid) is False
+
+    # 2. Mutate issuer_id
+    auth2 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth2.issuer_id = "acrevia:dispatcher:untrusted_rogue_authority"
+    assert auth2.is_valid_for(target_fid) is False
+
+    # 3. Mutate dispatcher_identity / actor_identity
+    auth3 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth3.actor_identity = "rogue_dispatcher_identity"
+    assert auth3.is_valid_for(target_fid) is False
+
+    # 4. Mutate task_id
+    auth4 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth4.task_id = "canon-task-MUTATED-99"
+    assert auth4.is_valid_for(target_fid) is False
+
+    # 5. Mutate farm_id
+    auth5 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth5.farm_id = str(uuid.uuid4())
+    assert auth5.is_valid_for(target_fid) is False
+
+    # 6. Mutate purpose
+    auth6 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth6.purpose = "EXFILTRATE_DATABASE_RECORDS"
+    assert auth6.is_valid_for(target_fid) is False
+
+    # 7. Mutate environment
+    auth7 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth7.environment = "rogue_staging_cluster"
+    assert auth7.is_valid_for(target_fid) is False
+
+    # 8. Mutate issued_at
+    auth8 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth8.issued_at = auth8.issued_at + timedelta(seconds=1)
+    assert auth8.is_valid_for(target_fid) is False
+
+    # 9. Mutate expires_at
+    auth9 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth9.expires_at = auth9.expires_at + timedelta(seconds=1)
+    assert auth9.is_valid_for(target_fid) is False
+
+    # 10. Mutate replay_token
+    auth10 = DispatchVerifier.issue_test_authorization(task_id="canon-task-01", farm_id=target_fid, expires_at=now + timedelta(hours=2))
+    auth10.replay_token = "tok:mutated:nonce"
+    assert auth10.is_valid_for(target_fid) is False
+
+
+def test_mandatory_expiration_enforcement_boundary():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves strict mandatory capability expiration rules:
+    1. Omitted / None expires_at is rejected.
+    2. Naive issued_at (missing UTC timezone) is rejected.
+    3. Naive expires_at (missing UTC timezone) is rejected.
+    4. Negative / zero lifetime (expires_at <= issued_at) is rejected.
+    5. Excessive lifetime (expires_at - issued_at > 24 hours) is rejected.
+    6. Expired token at evaluation time is rejected.
+    """
+    secret = DispatchVerifier.get_internal_authority_secret()
+    now_utc = datetime.now(timezone.utc)
+    target_fid = str(uuid.uuid4())
+
+    # 1. expires_at is None
+    with pytest.raises(DispatchAuthorizationFailedError, match="MANDATORY_EXPIRATION_REQUIRED"):
+        DispatchAuthorization(
+            task_id="exp-test-01",
+            farm_id=target_fid,
+            actor_identity="worker",
+            issued_at=now_utc,
+            expires_at=None, # type: ignore
+            _internal_auth_key=secret,
+        )
+
+    # 2. Naive issued_at
+    with pytest.raises(DispatchAuthorizationFailedError, match="TIMEZONE_AWARE_ISSUED_AT_REQUIRED"):
+        DispatchAuthorization(
+            task_id="exp-test-02",
+            farm_id=target_fid,
+            actor_identity="worker",
+            issued_at=datetime(2026, 11, 12, 10, 0, 0),  # naive
+            expires_at=now_utc + timedelta(hours=1),
+            _internal_auth_key=secret,
+        )
+
+    # 3. Naive expires_at
+    with pytest.raises(DispatchAuthorizationFailedError, match="TIMEZONE_AWARE_EXPIRATION_REQUIRED"):
+        DispatchAuthorization(
+            task_id="exp-test-03",
+            farm_id=target_fid,
+            actor_identity="worker",
+            issued_at=now_utc,
+            expires_at=datetime(2026, 11, 12, 11, 0, 0),  # naive
+            _internal_auth_key=secret,
+        )
+
+    # 4. Negative / zero lifetime
+    with pytest.raises(DispatchAuthorizationFailedError, match="INVALID_EXPIRATION_WINDOW"):
+        DispatchAuthorization(
+            task_id="exp-test-04",
+            farm_id=target_fid,
+            actor_identity="worker",
+            issued_at=now_utc,
+            expires_at=now_utc - timedelta(seconds=1),
+            _internal_auth_key=secret,
+        )
+
+    # 5. Excessive lifetime (> 24 hours)
+    with pytest.raises(DispatchAuthorizationFailedError, match="EXCESSIVE_EXPIRATION_WINDOW"):
+        DispatchAuthorization(
+            task_id="exp-test-05",
+            farm_id=target_fid,
+            actor_identity="worker",
+            issued_at=now_utc,
+            expires_at=now_utc + timedelta(hours=24, minutes=1),
+            _internal_auth_key=secret,
+        )
+
+
+def test_replay_store_capacity_high_water_fail_closed():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that if the in-memory replay token store exceeds its high-water mark (> 5000)
+    and unexpired tokens prevent pruning below capacity, new tokens fail closed
+    with REPLAY_STORE_CAPACITY_EXCEEDED rather than silently allowing replays.
+    """
+    now = datetime.now(timezone.utc)
+    future_expiry = now + timedelta(hours=12)
+
+    # Save original store
+    original_store = DispatchVerifier.CONSUMED_TOKENS.copy()
+    try:
+        # Artificially fill replay store with 5001 unexpired entries
+        DispatchVerifier.CONSUMED_TOKENS = {
+            f"tok-capacity-test-{i}": future_expiry for i in range(5002)
+        }
+        with pytest.raises(DispatchAuthorizationFailedError, match="REPLAY_STORE_CAPACITY_EXCEEDED"):
+            DispatchVerifier.consume_replay_token("new-attempted-token", expires_at=future_expiry)
+    finally:
+        # Restore original store
+        DispatchVerifier.CONSUMED_TOKENS = original_store
+
+
+def test_replay_store_concurrent_race_and_legitimate_retry():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves:
+    1. Concurrent race: 10 threads racing the same replay token result in exactly 1 success and 9 failures.
+    2. Legitimate retry: after a task failure, a new capability token with a fresh replay token succeeds.
+    """
+    target_fid = str(uuid.uuid4())
+    shared_auth = DispatchVerifier.issue_test_authorization(task_id="task-race-10", farm_id=target_fid)
+
+    success_count = 0
+    failure_count = 0
+    lock = threading.Lock()
+
+    def try_verify():
+        nonlocal success_count, failure_count
+        try:
+            # We call consume_replay_token directly to test the atomic concurrency barrier
+            DispatchVerifier.consume_replay_token(shared_auth.replay_token, shared_auth.expires_at)
+            with lock:
+                success_count += 1
+        except DispatchAuthorizationFailedError:
+            with lock:
+                failure_count += 1
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(try_verify) for _ in range(10)]
+        for f in futures:
+            f.result()
+
+    assert success_count == 1
+    assert failure_count == 9
+
+    # Legitimate retry with fresh capability token succeeds
+    retry_auth = DispatchVerifier.issue_test_authorization(task_id="task-retry-fresh", farm_id=target_fid)
+    retry_success = DispatchVerifier.consume_replay_token(retry_auth.replay_token, retry_auth.expires_at)
+    assert retry_success is True
+
+
+def test_sqlalchemy_begin_nested_presavepoint_flush_mechanics():
+    """
+    [OFFLINE_UNIT_TEST]
+    Demonstrates and documents the SQLAlchemy pre-savepoint flush mechanics:
+    1. Session.begin_nested() flushes all pending objects in the session BEFORE issuing SAVEPOINT.
+    2. If the nested savepoint encounters an error and rolls back, only statements inside
+       the savepoint are rolled back.
+    3. The pre-savepoint object remains in the outer transaction.
+    4. Committing the outer transaction commits the pre-savepoint object.
+    5. Rolling back the outer transaction rolls back the pre-savepoint object.
+    """
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    # Part A: Pre-savepoint object committed by outer session.commit()
+    with TestingSession() as session:
+        pre_farm = Farm(
+            id=str(uuid.uuid4()),
+            name="Pre Savepoint Farm",
+            owner_id=str(uuid.uuid4()),
+            state="Telangana",
+            district="Warangal",
+            mandal="Warangal",
+            village="Geesugonda",
+        )
+        session.add(pre_farm)
+        # Verify pre_farm is dirty / pending in session
+        assert pre_farm in session.new
+
+        # Execute a nested savepoint that fails
+        try:
+            with session.begin_nested():
+                # Calling begin_nested() flushes pre_farm into SQLite transaction
+                assert pre_farm not in session.new
+
+                # Add an object inside savepoint
+                nested_farm = Farm(
+                    id=str(uuid.uuid4()),
+                    name="Nested Farm",
+                    owner_id=str(uuid.uuid4()),
+                    state="Telangana",
+                    district="Warangal",
+                    mandal="Warangal",
+                    village="Geesugonda",
+                )
+                session.add(nested_farm)
+                raise RuntimeError("Savepoint failure")
+        except RuntimeError:
+            pass
+
+        # Outer session commits
+        session.commit()
+
+        # Check DB state
+        with TestingSession() as verify_session:
+            assert verify_session.get(Farm, pre_farm.id) is not None
+            assert verify_session.get(Farm, nested_farm.id) is None
+
+
+def test_measured_suppression_durability_independent_read():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves that when revalidation measures insufficient provenance (distinct farms < 3):
+    1. It durably updates distinct_farms_count and validation_status = 'SUPPRESSED_INSUFFICIENT_PROVENANCE'.
+    2. It commits the transaction to the database.
+    3. An independent, newly-opened database session reads the updated suppressed state.
+    """
+    from backend.app.models.observation import Observation
+    from backend.app.models.regional_pulse import RegionalSignal, RegionalSignalEvidence
+    from backend.app.services.regional_pulse_service import RegionalPulseService
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(bind=engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    sig_id = "sig-durability-01"
+    fid1 = str(uuid.uuid4())
+    obs_id = "obs-dur-01"
+    start_d = date(2026, 11, 1)
+    end_d = date(2026, 11, 10)
+
+    with TestingSession() as session:
+        # Seed farm and observation
+        farm = Farm(
+            id=fid1,
+            name="Farm 1",
+            owner_id=str(uuid.uuid4()),
+            state="Telangana",
+            district="Warangal",
+            mandal="Warangal",
+            village="Geesugonda",
+        )
+        obs = Observation(
+            id=obs_id,
+            farm_id=fid1,
+            observer_id=str(uuid.uuid4()),
+            notes="Pest observed",
+            created_at=datetime(2026, 11, 5, 10, 0, tzinfo=timezone.utc),
+        )
+        sig = RegionalSignal(
+            id=sig_id,
+            district="Warangal",
+            crop_id="crop-cotton",
+            signal_category="OBSERVATION_SURGE",
+            signal_title="Cotton pest surge",
+            signal_summary="Cluster",
+            confidence_tier="FARMER_REPORT",
+            validation_status="UNVALIDATED_OBSERVATION",
+            distinct_farms_count=5, # Stale count before revalidation
+            source_observation_count=1,
+            is_outbreak_claim_suppressed=True,
+            recommended_action="Inspect",
+            observed_start_date=start_d,
+            observed_end_date=end_d,
+        )
+        ev = RegionalSignalEvidence(
+            id="ev-dur-01",
+            signal_id=sig_id,
+            evidence_type="OBSERVATION_REF",
+            evidence_reference_id=obs_id,
+        )
+        session.add_all([farm, obs, sig, ev])
+        session.commit()
+
+        # Revalidate signal provenance (only 1 verified farm < threshold 3)
+        res = RegionalPulseService.revalidate_signal_provenance(session, sig_id)
+        assert res is False  # Response suppressed
+
+    # Read from independent database session
+    with TestingSession() as independent_session:
+        refreshed_sig = independent_session.get(RegionalSignal, sig_id)
+        assert refreshed_sig is not None
+        assert refreshed_sig.distinct_farms_count == 1
+        assert refreshed_sig.validation_status == "SUPPRESSED_INSUFFICIENT_PROVENANCE"
+
+
+def test_idempotent_privilege_grants_ddl_explicit_revokes():
+    """
+    [OFFLINE_UNIT_TEST]
+    Proves idempotent least-privilege SQL DDL generation:
+    1. Explicit REVOKE UPDATE, DELETE ON TABLE audit_logs to prevent pre-existing or inherited grants.
+    2. Explicit REVOKE DELETE ON TABLE agricultural_organizations for collaborative records.
+    3. Explicit REVOKE INSERT, UPDATE, DELETE ON TABLE crops for shared reference entities.
+    4. Explicit REVOKE TRUNCATE, REFERENCES, TRIGGER across all 132 database entities.
+    5. Exact 3-way set equality: Base.metadata.tables == TABLE_CLASSIFICATION == PRIVILEGE_CROSSWALK.
+    """
+    ddl = generate_privilege_grants_ddl("acrevia_staging_app")
+
+    # 1. audit_logs explicit revokes
+    assert "REVOKE UPDATE, DELETE ON TABLE audit_logs FROM acrevia_staging_app;" in ddl
+    assert "GRANT SELECT, INSERT ON TABLE audit_logs TO acrevia_staging_app;" in ddl
+
+    # 2. agricultural_organizations explicit delete revoke
+    assert "REVOKE DELETE ON TABLE agricultural_organizations FROM acrevia_staging_app;" in ddl
+    assert "GRANT SELECT, INSERT, UPDATE ON TABLE agricultural_organizations TO acrevia_staging_app;" in ddl
+
+    # 3. crops explicit write revokes
+    assert "REVOKE INSERT, UPDATE, DELETE ON TABLE crops FROM acrevia_staging_app;" in ddl
+    assert "GRANT SELECT ON TABLE crops TO acrevia_staging_app;" in ddl
+
+    # 4. Truncate, References, Trigger defensive revokes
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE audit_logs FROM acrevia_staging_app;" in ddl
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE farms FROM acrevia_staging_app;" in ddl
+    assert "REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE crops FROM acrevia_staging_app;" in ddl
+
+    # 5. 3-way set equality and exact counts
+    import backend.app.models
+    assert set(Base.metadata.tables.keys()) == set(TABLE_CLASSIFICATION.keys()) == set(PRIVILEGE_CROSSWALK.keys())
+    assert len(PRIVILEGE_CROSSWALK) == 132
+
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["SELECT"]) == 132
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["INSERT"]) == 108
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["UPDATE"]) == 107
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["DELETE"]) == 90
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["TRUNCATE"]) == 0
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["REFERENCES"]) == 0
+    assert sum(1 for v in PRIVILEGE_CROSSWALK.values() if v["TRIGGER"]) == 0

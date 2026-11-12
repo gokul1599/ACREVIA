@@ -968,3 +968,118 @@ CREATE POLICY {table_name}_author_write_policy ON {table_name}
     WITH CHECK ({write_expr});
 """
     return ""
+
+
+# ==============================================================================
+# AUTHORITATIVE 132-TABLE PRIVILEGE CROSSWALK (LEAST PRIVILEGE SPECIFICATION)
+# ==============================================================================
+
+PRIVILEGE_CROSSWALK: Dict[str, Dict[str, Any]] = {}
+for tbl_name, tbl_meta in TABLE_CLASSIFICATION.items():
+    cat = tbl_meta.get("category")
+    acc = tbl_meta.get("access_type")
+
+    # Determine least-privilege rights for runtime application role (e.g. acrevia_staging_app)
+    can_select = True
+    can_insert = False
+    can_update = False
+    can_delete = False
+    can_truncate = False
+    can_references = False
+    can_trigger = False
+
+    if tbl_name == "audit_logs":
+        # Strictly append-only audit trail under DPDPA 2023 least-privilege specification
+        can_insert = True
+        can_update = False
+        can_delete = False
+        priv_group = "TENANT_DIRECT_APPEND_ONLY"
+    elif cat in (TableCategory.TENANT_DIRECT, TableCategory.USER_OWNED, TableCategory.TENANT_INDIRECT):
+        can_insert = True
+        can_update = True
+        can_delete = True
+        priv_group = f"{cat.value.upper()}_DML"
+    elif cat == TableCategory.COMMUNITY_COLLABORATIVE:
+        can_insert = True
+        can_update = True
+        can_delete = False  # Denied to protect collaborative records from unilateral deletion
+        priv_group = "COMMUNITY_COLLABORATIVE_DML"
+    elif cat == TableCategory.SHARED_REFERENCE:
+        if acc == "PRIVATE_OPERATIONAL":
+            can_insert = True
+            can_update = True
+            can_delete = False
+            priv_group = "PRIVATE_OPERATIONAL_REF"
+        elif acc == "ADMINISTRATIVE":
+            can_insert = False
+            can_update = False
+            can_delete = False
+            priv_group = "ADMIN_INTEGRATION_REF"
+        else:
+            can_insert = False
+            can_update = False
+            can_delete = False
+            priv_group = "PUBLIC_SHARED_REF"
+    else:
+        priv_group = "UNCLASSIFIED"
+
+    PRIVILEGE_CROSSWALK[tbl_name] = {
+        "table_name": tbl_name,
+        "category": cat,
+        "privilege_group": priv_group,
+        "SELECT": can_select,
+        "INSERT": can_insert,
+        "UPDATE": can_update,
+        "DELETE": can_delete,
+        "TRUNCATE": can_truncate,
+        "REFERENCES": can_references,
+        "TRIGGER": can_trigger,
+    }
+
+
+def generate_privilege_grants_ddl(role_name: str = "acrevia_staging_app") -> str:
+    """
+    Generates exact least-privilege PostgreSQL GRANT and REVOKE statements
+    for the runtime application role across all 132 database entities.
+    
+    LEAST-PRIVILEGE INVARIANTS:
+    1. Zero blanket grants. Shared reference tables receive SELECT only.
+    2. Zero TRUNCATE permissions granted to any runtime role (RLS bypass mitigation).
+    3. Zero REFERENCES permissions granted to prevent foreign key schema constraints.
+    4. Zero TRIGGER permissions granted to prevent unauthorized trigger execution.
+    5. Audit log table (audit_logs) receives SELECT, INSERT, with explicit REVOKE UPDATE, DELETE for idempotency.
+    6. Community collaborative tables receive SELECT, INSERT, UPDATE, with explicit REVOKE DELETE.
+    """
+    lines = [
+        f"-- Least-Privilege Grants for Runtime Role: {role_name}",
+        f"REVOKE ALL ON SCHEMA public FROM {role_name};",
+        f"GRANT USAGE ON SCHEMA public TO {role_name};",
+        f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {role_name};",
+        "",
+    ]
+    for tbl_name, privs in PRIVILEGE_CROSSWALK.items():
+        # First, explicitly revoke disallowed DML permissions for idempotency
+        disallowed_dml = []
+        for p in ["INSERT", "UPDATE", "DELETE"]:
+            if not privs[p]:
+                disallowed_dml.append(p)
+        if disallowed_dml:
+            lines.append(f"REVOKE {', '.join(disallowed_dml)} ON TABLE {tbl_name} FROM {role_name};")
+
+        grants = []
+        if privs["SELECT"]:
+            grants.append("SELECT")
+        if privs["INSERT"]:
+            grants.append("INSERT")
+        if privs["UPDATE"]:
+            grants.append("UPDATE")
+        if privs["DELETE"]:
+            grants.append("DELETE")
+
+        if grants:
+            lines.append(f"GRANT {', '.join(grants)} ON TABLE {tbl_name} TO {role_name};")
+        # Explicit defensive revokes for dangerous schema/system privileges
+        lines.append(f"REVOKE TRUNCATE, REFERENCES, TRIGGER ON TABLE {tbl_name} FROM {role_name};")
+
+    return "\n".join(lines)
+

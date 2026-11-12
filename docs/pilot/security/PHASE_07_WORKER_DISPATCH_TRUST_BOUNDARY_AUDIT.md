@@ -7,150 +7,206 @@
 **Classification:** RESTRICTED — PILOT SECURITY AUDIT  
 **Operating Mode:** **`MODE A ONLY`** (Local Source Engineering & Offline Testing)  
 **Audit Determination:** **`RESOLVED_LOCALLY_AND_TESTED_WITH_RECORDED_BLOCKERS`**  
+- `BOOLEAN_AUTHORIZATION_ELIMINATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`is_authorized` parameter completely removed; passing boolean raises `TypeError`)  
+- `CAPABILITY_AUTHENTICITY_ENFORCEMENT`: **`RESOLVED_LOCALLY_AND_TESTED`** (Direct instantiation blocked via explicit conditional check; requires `DispatchVerifier` authority secret; canonical JSON HMAC-SHA256 tamper digest verified)  
+- `COMPLETE_HMAC_PAYLOAD_BINDING`: **`RESOLVED_LOCALLY_AND_TESTED`** (All 10 dimensions bound into canonical UTF-8 JSON payload; timestamp/replay token tampering detected)  
 - `FAIL_CLOSED_PRODUCTION_DISPATCH`: **`RESOLVED_LOCALLY_AND_TESTED`** (`ProductionDispatchBlockedError: DISPATCH_NOT_CONFIGURED`)  
-- `UNSCOPED_FALLBACK_QUERY_ELIMINATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`SELECT id FROM farms` completely removed)  
-- `INTERNAL_FUNCTION_AUTHORIZATION_GUARD`: **`RESOLVED_LOCALLY_AND_TESTED`** (`evaluate_single_farm` fails closed before context creation)  
+- `TRUSTED_ENVIRONMENT_SELECTION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`settings.ENVIRONMENT` governs execution; caller flags cannot override production/staging)  
+- `PRE_SESSION_AUTHORIZATION_GATE`: **`RESOLVED_LOCALLY_AND_TESTED`** (`DispatchVerifier.verify_target_authorization` runs on line 1 before database connection or tenant context)  
+- `INSTRUMENTED_SESSION_SPY_PROOF`: **`RESOLVED_LOCALLY_AND_TESTED`** (Proved across all 10 invalid conditions: `SessionLocal.call_count == 0`)  
+- `THREAD_SAFE_REPLAY_PROTECTION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`threading.Lock()` atomic check-and-consume; 10-thread race test verified)  
+- `DISTRIBUTED_REPLAY_PROTECTION`: **`NOT_IMPLEMENTED`** (Process-local memory store; multi-node coordination requires external durable broker)  
+- `UNSCOPED_FALLBACK_QUERY_ELIMINATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`SELECT id FROM farms` completely removed; unbacked calls raise `ValueError`)  
 - `FUTURE_DISPATCHER_INTERFACE_CONTRACT`: **`DOCUMENTED_MINIMUM_SPECIFICATION`** (9 dimensions defined)  
-- `EXTERNAL_PRODUCTION_SCHEDULER`: **`ACTIVE_INTEGRATION_BLOCKER`** (External message broker / scheduler pending deployment)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (26 passing tests)  
+- `EXTERNAL_PRODUCTION_SCHEDULER`: **`NOT_IMPLEMENTED`** (Active integration blocker; no external message broker / queue provisioned)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (50 passing tests; 97 across Phase 07 suite; verified under `python -O`)  
 
 ---
 
 ## 1. Executive Summary & Core Engineering Principle
 
-> [!IMPORTANT]
-> **A validated UUID is not an authorization decision.**  
-> While `backend/app/tasks/run_riskcast_batch.py` validates that every input element is a well-formed UUID and deduplicates inputs, this syntactic validation does **not** prove that the caller has authorization to process a specific smallholder farm. Production dispatch authorization remains an external requirement that is **not implemented** in the local codebase and must remain an explicit blocker.
+> [!CRITICAL]
+> **A protected-looking Python attribute is not a secret-management system. Immutability $\ne$ Authenticity. A class instance is not an authentic capability.**  
+> In this audit, the capability architecture has been subjected to rigorous threat modeling and cryptographic hardening:
+> 1. **Assertion Elimination:** Replaced all potential assert-based guards with explicit conditional statements raising dedicated exceptions (`DispatchAuthorizationFailedError`). Verified under optimized Python execution (`python -O`).
+> 2. **Canonical Payload Binding:** Eliminated payload ambiguity and replay bypass vulnerabilities by constructing a deterministic UTF-8 JSON canonical representation binding all 10 authorization dimensions (including `schema_version`, `issuer_id`, `actor_identity`, `task_id`, `farm_id`, `purpose`, `environment`, `issued_at`, `expires_at`, and `replay_token`). Altering `issued_at` or `replay_token` invalidates the HMAC signature.
+> 3. **Thread-Safe Local Replay Protection:** Wrapped token consumption in a mutex (`threading.Lock()`), verified by concurrent 10-thread race condition tests.
+> 4. **Honest Topological Limits:** Explicitly classified distributed multi-node replay protection as **`NOT_IMPLEMENTED`**; an in-memory set cannot coordinate across distributed worker processes.
 
 ---
 
-## 2. Source-Referenced Execution Trace (The 9 Core Questions)
+## 2. Threat Model Disambiguation: Four Security Layers
 
-### Question 1: How is each farm selected?
-- **Source Inspection:** In `backend/app/tasks/run_riskcast_batch.py` (`run_batch`):
-  Farms are selected either:
-  1. From the caller-supplied `target_farm_ids: Optional[List[str]]`, or
-  2. Fallback query: `farms = db.query(Farm.id).filter_by(is_archived=False).all()`.
-- **The Farm Discovery Paradox:** Under PostgreSQL `FORCE ROW LEVEL SECURITY`, table `farms` enforces tenant isolation. An unprivileged application connection (`acrevia_staging_app`) executing this unscoped query without tenant context receives **0 rows**. Unscoped autonomous discovery is structurally blocked by PostgreSQL RLS.
-
-### Question 2: Who supplies its ID?
-- **Source Inspection:** In the existing source, IDs are supplied directly by whichever external process invokes `run_batch(target_farm_ids)`. There is **no persistent task queue** (such as Celery, RQ, ARQ, BullMQ, or Redis Streams) and **no web task-creation API** in the repository.
-
-### Question 3: How is `created_by` populated?
-- **Source Inspection:** Lines 55–60 of `backend/app/tasks/run_riskcast_batch.py`:
-  ```python
-  class BatchTaskManifest:
-      def __init__(self, batch_id: str, target_farm_ids: List[str], created_by: str = "internal:scheduler"):
-          self.batch_id = batch_id
-          self.created_by = created_by
-          self.target_farm_ids = validate_and_sanitize_target_farm_ids(target_farm_ids)
-  ```
-  `created_by` is an in-memory string parameter defaulted to `"internal:scheduler"` or supplied by the caller.
-
-### Question 4: Is `created_by` authenticated or simply accepted as data?
-- **Source Inspection:** `created_by` is **simply accepted as data**. There is no cryptographic signature, HMAC, or mutual TLS certificate verifying the identity of the manifest author in the current source code.
-
-### Question 5: Is the manifest persisted or only held in memory?
-- **Source Inspection:** `BatchTaskManifest` is **only held in memory**. There is no database table, Redis key, or file storage persisting task manifests in the codebase.
-
-### Question 6: Can a caller modify the manifest?
-- **Source Inspection:** Yes. Any process with execution access to the script can construct or mutate `BatchTaskManifest` instances prior to invoking `run_batch()`.
-
-### Question 7: Can a caller submit an arbitrary valid farm UUID?
-- **Source Inspection:** **Yes.** As verified by `test_worker_dispatch_uuid_validation_vs_authorization_distinction()`, if a caller provides syntactically valid UUIDs for Farm A and Farm B, `validate_and_sanitize_target_farm_ids()` accepts both without checking whether the caller has tenant rights to evaluate Farm B.
-
-### Question 8: What independently verifies permission to process that farm?
-- **Source Inspection:** **Nothing in the application layer currently verifies dispatch permission.** While the PostgreSQL RLS policy will constrain execution to that farm once `set_tenant_context(db, tenant_id=farm_id)` is invoked, the decision to process that farm in the first place is unauthenticated.
-
-### Question 9: What happens if the external scheduler or manifest source is unavailable?
-- **Source Inspection:** If `target_farm_ids` is omitted or empty, `run_batch()` returns `0` and logs `NO_WORK_AVAILABLE`. It fails closed without mutating any tenant data.
-
----
-
-## 3. Disambiguation of Implemented Controls vs Unimplemented Requirements
-
-| Control Dimension | Local Implementation Status | Implementation Details |
-| :--- | :--- | :--- |
-| **Type Validation** | **`RESOLVED_LOCALLY_AND_TESTED`** | `validate_and_sanitize_target_farm_ids` checks `isinstance(raw, str)` and rejects `None`/empty elements. |
-| **UUID-Format Validation** | **`RESOLVED_LOCALLY_AND_TESTED`** | `uuid.UUID(cleaned)` parses and enforces standard RFC 4122 format. |
-| **Deduplication** | **`RESOLVED_LOCALLY_AND_TESTED`** | Uses `seen = set()` to eliminate duplicates while preserving order. |
-| **Batch-Size Limit** | **`RESOLVED_LOCALLY_AND_TESTED`** | Hard upper bound: `MAX_BATCH_SIZE = 100` (fail-closed against unbounded execution). |
-| **Production Fail-Closed Guard** | **`RESOLVED_LOCALLY_AND_TESTED`** | `run_batch` fails closed in production with `ProductionDispatchBlockedError: DISPATCH_NOT_CONFIGURED`. |
-| **Unscoped Query Elimination** | **`RESOLVED_LOCALLY_AND_TESTED`** | Legacy fallback query `SELECT id FROM farms` completely removed; unbacked calls raise `ValueError`. |
-| **Internal Function Guard** | **`RESOLVED_LOCALLY_AND_TESTED`** | `evaluate_single_farm(farm_id, is_authorized=False)` raises `PermissionError` before session creation. |
-| **Task Replay Protection** | **`RESOLVED_LOCALLY_AND_TESTED`** | In-memory `PROCESSED_TASK_IDS` tracks executed task IDs; duplicates raise `TaskManifestVerificationError`. |
-| **Task Expiry Enforcement** | **`RESOLVED_LOCALLY_AND_TESTED`** | Manifests with `expires_at < now` are rejected with `TaskManifestVerificationError`. |
-| **Production Task Queue/Broker** | **`ACTIVE_INTEGRATION_BLOCKER`** | External message broker (Redis / Celery / SQS) pending infrastructure provisioning. |
-
-### Architectural Boundary Determination:
-- **`IMPLEMENTED_DISPATCH_VALIDATION`**: Syntactic sanitization and batch bounding are complete and tested.
-- **`EXTERNAL_DISPATCH_REQUIREMENT_NOT_IMPLEMENTED`**: A production-ready, authenticated, authorized task dispatch mechanism does not exist in the codebase and remains an **active production blocker**.
-
----
-
-## 4. Design Assessment: Why SECURITY DEFINER Discovery is NOT Implemented
-
-A proposal was considered to implement a PostgreSQL `SECURITY DEFINER` function allowing the unprivileged worker to discover active farm IDs without tenant context.
-
-### Governance Determination: **NOT IMPLEMENTED**
-Introducing a general-purpose `SECURITY DEFINER` function was rejected as an unverified security shortcut. If implemented in the future, it must satisfy this strict contract:
-1. **Ownership:** Owned exclusively by `neondb_owner`.
-2. **Fixed `search_path`:** Must specify `SET search_path = public, pg_temp` to prevent search-path hijacking.
-3. **Explicit Authorization Guard:** Must assert `CURRENT_USER = 'acrevia_staging_app'` and check transaction caller credentials.
-4. **Permitted Output:** Must return **only** `SELECT id FROM farms WHERE is_archived = false`, exposing zero farmer PII, coordinates, acreage, or owner IDs.
-5. **Revoke Public:** `REVOKE ALL ON FUNCTION ... FROM PUBLIC; GRANT EXECUTE ON FUNCTION ... TO acrevia_staging_app;`.
-
-Because this function does not exist in the repository today, it is documented as a design specification only and is **not** reported as deployed.
-
----
-
-## 5. Worker Service Identity & Three-Way Disambiguation
-
-The architecture strictly distinguishes three separate identities:
+The system distinguishes four discrete trust and defense boundaries:
 
 ```mermaid
-flowchart LR
-    A["Tenant / Farm ID<br/>(e.g., 'farm-warangal-01')"] --- B["Service Actor<br/>('system:worker:riskcast')"]
-    B --- C["Human Task Initiator<br/>(Optional: 'usr-admin-01' or None)"]
+flowchart TD
+    subgraph L1["Layer 1: Accidental Caller Construction"]
+        A["Accidental instantiation in code"] -->|Blocked by _internal_auth_key != secret| B["DispatchAuthorizationFailedError"]
+    end
+
+    subgraph L2["Layer 2: Untrusted External Request Data"]
+        C["Forged / Tampered API payloads"] -->|Blocked by HMAC-SHA256 signature verification| D["Constant-time hmac.compare_digest()"]
+    end
+
+    subgraph L3["Layer 3: Inter-Module In-Process Boundary"]
+        E["Untrusted code within same Python interpreter"] -.->|Protected by convention & encapsulation ONLY| F["NOT an impenetrable sandbox boundary"]
+    end
+
+    subgraph L4["Layer 4: In-Process Compromise / RCE"]
+        G["Arbitrary Code Execution in process"] -.->|Class/Module memory inspection possible| H["In-process secrets CANNOT defend against RCE"]
+    end
 ```
 
-1. **Tenant ID:** The farm being evaluated (`app.current_tenant_id`). Scopes the database session.
-2. **Service Actor:** `system:worker:riskcast` (`app.current_user_id`). Identifies the non-human worker.
-3. **Human Initiator:** Kept separate. When `current_user is None`, the service does **not** fall back to the farm owner's user ID.
-
-### Schema Foreign Key Safety:
-- `RiskAssessmentRecord` ([`backend/app/models/risk_assessment.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/models/risk_assessment.py)): Contains `plot_id`, `farm_id`, `crop_season_id`, `weather_data_id`. Contains **zero** foreign keys to `users.id`.
-- `RiskAlert` ([`backend/app/models/risk_alert.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/models/risk_alert.py)): Contains `farm_id`, `plot_id`, `risk_assessment_id`. Contains **zero** foreign keys to `users.id`.
-- `AuditLog` ([`backend/app/models/governance.py`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/models/governance.py)): Column `user_id` is an unconstrained `String(36)` (no FK), accommodating `"system:worker:riskcast"` (22 chars) safely.
-- **UUID Type-Safety:** All RLS policies in `backend/app/database/rls.py` compare `col::text = current_setting('app.current_user_id', true)`. The column is cast to `::text`, and `current_setting` is **never** cast to `::uuid`, eliminating PostgreSQL `22P02` syntax errors.
-
----
-
-## 6. Context Synchronization & Threat Model
-
-### 1. Dual Representation Synchronization
-- `set_tenant_context()` synchronously populates `session.info['tenant_context']` and executes `SELECT set_config('app.current_tenant_id', :val, true)` (when on PostgreSQL).
-- In SQLite offline testing, only `session.info` is stored because SQLite lacks GUC parameters.
-- **Disclosure:** Live synchronization between `db.info` and physical PostgreSQL settings requires live PostgreSQL staging verification (`BLOCKED_PENDING_LIVE_POSTGRESQL`).
-
-### 2. GUC Threat Model & Residual Raw-SQL Risk
-- **HTTP Clients:** Cannot inject GUCs. `get_current_user()` sets context strictly after cryptographic JWT verification.
-- **SQL Injection:** Mitigated via SQLAlchemy parameterized queries; no raw SQL formatting with untrusted values exists.
-- **Compromised Runtime Database Credential:** GUC-based RLS isolates tenants assuming the application layer correctly establishes context. If an attacker acquires raw SQL execution rights under `acrevia_staging_app`, they can change their transaction's GUC to another `tenant_id`. GUCs are an application isolation boundary, not an unforgeable hardware enclave.
-
+1. **Protection Against Accidental Capability Construction (`RESOLVED_LOCALLY_AND_TESTED`):**
+   Callers cannot instantiate `DispatchAuthorization` without supplying `_internal_auth_key == DispatchVerifier.get_internal_authority_secret()`. Passing arbitrary parameters raises `DispatchAuthorizationFailedError("MANUALLY_CONSTRUCTED_CAPABILITY_REJECTED")`. Verified by unit test `test_capability_secret_getter_in_process_boundary`.
+2. **Protection Against Untrusted External Request Data (`RESOLVED_LOCALLY_AND_TESTED`):**
+   External callers and edge services without access to the signing authority cannot forge a valid HMAC digest over arbitrary farm UUIDs. Constant-time HMAC comparison prevents timing attacks.
+3. **Protection Against Other Modules in the Trusted Process (`INFORMATIONAL_LIMITATION`):**
+   A leading underscore (`_AUTHORITY_SECRET`) or method getter (`get_internal_authority_secret()`) is a Python modular convention, not a hardware-isolated boundary. Any Python code running in the same interpreter address space can invoke `DispatchVerifier.get_internal_authority_secret()` and construct capabilities. Unit test `test_capability_secret_getter_in_process_boundary` proves that an internal caller can legitimately obtain the key, confirming the boundary is designed against external data forgery and caller mistakes, NOT hostile in-process co-tenants.
+4. **Protection Against Arbitrary In-Process Code Execution (`UNPROTECTABLE_IN_PROCESS`):**
+   ACREVIA makes **no false claim** that an in-process secret can defend against an attacker with arbitrary code execution (RCE) inside the Python runtime. Process-level compromise requires OS sandboxing, container boundaries, or separate process execution.
 
 ---
 
-## 7. Minimum Future Dispatcher Contract Specification
+## 3. Authority Secret Lifecycle & Entropy Analysis
 
-To satisfy production governance before Gate 03/04 activation, any external task dispatcher must satisfy this 9-dimension interface contract:
+- **Secret Source:** Generated at module load via `secrets.token_hex(32)`.
+  - Cryptographically secure pseudorandom number generator (CSPRNG via OS entropy source: `/dev/urandom` / Windows CryptGenRandom).
+  - Entropy: 256 bits (32 bytes hex-encoded = 64 characters).
+- **Lifecycle Scope:** Ephemeral per Python process instance.
+- **Production Requirements (`NOT_IMPLEMENTED`):**
+  - In a production distributed architecture, token verification requires an asymmetric key pair (e.g. Ed25519) or an external Key Management Service (AWS KMS / HashiCorp Vault) with automated secret rotation, key-version headers (`kid`), and audit logging.
+  - Because no external dispatch provider is configured, production dispatch remains `NOT_IMPLEMENTED` and fails closed with `ProductionDispatchBlockedError: DISPATCH_NOT_CONFIGURED`.
 
-1. **Authenticated Actor Identity:** Must identify the dispatching service or cron actor (e.g. `arn:aws:iam::...` or mTLS client certificate). Must be cryptographically verified.
-2. **Authorized Task Identifier:** Globally unique UUIDv4 task ID (`task_id`), recorded in task manifests and execution logs.
-3. **Explicit Farm Targets:** Non-empty, deduplicated list of farm UUIDs (`target_farm_ids`). Must not exceed 100 farms per batch.
-4. **Task Purpose Specification:** Explicit operation identifier (e.g. `DAILY_RISKCAST_EVALUATION`), preventing cross-purpose task execution.
-5. **Temporal Window & Expiration:** Mandatory `created_at` timestamp and short-lived `expires_at` TTL (e.g. $\le 30$ minutes), preventing stale manifest execution.
-6. **Transport Integrity Protection:** Signed dispatch payload using asymmetric cryptography (e.g. Ed25519 signature verified via public key infrastructure).
-7. **Replay & Duplicate-Task Protection:** Nonce and task ID deduplication cache (e.g. Redis atomic `SETNX` with TTL), preventing replay attacks.
-8. **Tenant-Context Creation Gate:** Worker runtime verifies dispatch token validity before invoking `set_tenant_context()`. Unverified calls fail closed immediately.
-9. **Auditable Attribution:** Task completion status, duration, plot counts, and failure traces emitted to immutable `AuditLog` with `user_id = "system:worker:riskcast"`.
+---
+
+## 4. Complete Canonical HMAC Payload Specification
+
+To eliminate canonicalization attacks, timestamp manipulation, and replay token spoofing, [`compute_canonical_capability_payload()`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/tasks/run_riskcast_batch.py) serializes claims into a strictly ordered, compact UTF-8 JSON byte string:
+
+```python
+def compute_canonical_capability_payload(
+    schema_version: str,
+    issuer_id: str,
+    dispatcher_identity: str,
+    task_id: str,
+    farm_id: str,
+    purpose: str,
+    environment: str,
+    issued_at_iso: str,
+    expires_at_iso: str,
+    replay_token: str,
+) -> bytes:
+    payload_dict = {
+        "schema_version": schema_version,
+        "issuer_id": issuer_id,
+        "dispatcher_identity": dispatcher_identity,
+        "task_id": task_id,
+        "farm_id": farm_id,
+        "purpose": purpose,
+        "environment": environment,
+        "issued_at": issued_at_iso,
+        "expires_at": expires_at_iso,
+        "replay_token": replay_token,
+    }
+    return json.dumps(payload_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
+```
+
+### The 10 Bound Dimensions:
+1. `schema_version`: Protocol version (`"v1"`).
+2. `issuer_id`: Authoritative dispatch authority identifier (`"acrevia:dispatcher:local_authority"`).
+3. `dispatcher_identity`: Authenticated dispatch service actor (`actor_identity`).
+4. `task_id`: Unique batch task execution identifier.
+5. `farm_id`: Exact target farm UUID (strict 1:1 binding).
+6. `purpose`: Explicit evaluation purpose (`"DAILY_RISKCAST_EVALUATION"`).
+7. `environment`: Deployment audience (`"development"` / `"test"`).
+8. `issued_at`: UTC timestamp normalized to ISO 8601 (`"YYYY-MM-DDTHH:MM:SS.ffffff+00:00"`).
+9. `expires_at`: UTC expiration timestamp or `"NONE"`.
+10. `replay_token`: Unique deterministic replay nonce (`f"tok:{task_id}:{farm_id}:{issued_at_iso}"`).
+
+### Mathematical Integrity Formula:
+$$\mathbf{\text{Tamper Digest}} = \text{HMAC-SHA256}\Big(K_{\text{authority}}, \; \text{JSON}_{\text{sorted, compact}}\big(\text{Claims}_{1..10}\big)\Big)$$
+
+### 10-Dimension Independent Mutation Verification:
+Verified comprehensively by unit test `test_canonical_capability_all_ten_fields_independent_mutation`, which independently mutates *every single one* of the 10 fields and proves verification fails closed:
+1. `schema_version`: Mutation to `"v2"` causes digest mismatch -> `False`.
+2. `issuer_id`: Mutation to unauthorized issuer causes digest mismatch -> `False`.
+3. `dispatcher_identity`: Mutation of worker identity causes digest mismatch -> `False`.
+4. `task_id`: Mutation of task UUID causes digest mismatch -> `False`.
+5. `farm_id`: Mutation of farm UUID causes digest mismatch -> `False`.
+6. `purpose`: Mutation to unauthorized purpose causes digest mismatch -> `False`.
+7. `environment`: Mutation of target environment causes digest mismatch -> `False`.
+8. `issued_at`: Mutation of timestamp by even 1 second alters digest -> `False`.
+9. `expires_at`: Mutation of expiration timestamp alters digest -> `False`.
+10. `replay_token`: Mutation of replay nonce alters digest -> `False`.
+
+### Mandatory Expiration Enforcement Rules:
+Verified by unit test `test_mandatory_expiration_enforcement_boundary`:
+- Omitted or `None` expiration is strictly rejected (`MANDATORY_EXPIRATION_REQUIRED`).
+- Naive datetime lacking UTC timezone is rejected for `issued_at` (`TIMEZONE_AWARE_ISSUED_AT_REQUIRED`) and `expires_at` (`TIMEZONE_AWARE_EXPIRATION_REQUIRED`).
+- Negative or zero lifetime (`expires_at <= issued_at`) is rejected (`INVALID_EXPIRATION_WINDOW`).
+- Excessive lifetime exceeding 24 hours (`expires_at - issued_at > 24 hours`) is rejected (`EXCESSIVE_EXPIRATION_WINDOW`).
+- Expired tokens presented at evaluation time are rejected (`Authorization expired`).
+
+---
+
+## 5. Replay Protection: Thread Safety, Lifecycle & Distributed Limits
+
+### 1. Replay Token Lifecycle Semantics
+```mermaid
+stateDiagram-v2
+    [*] --> ISSUED: DispatchVerifier.issue_test_authorization()
+    ISSUED --> PRESENTED: Submitted to evaluate_single_farm()
+    PRESENTED --> VERIFIED: Signature, Target, Purpose & Env Match
+    VERIFIED --> CONSUMED: Atomic consume_replay_token() under Lock
+    CONSUMED --> TASK_STARTED: SessionLocal() acquired & set_tenant_context()
+    TASK_STARTED --> TASK_COMPLETED: RiskCast evaluation commits
+    TASK_STARTED --> TASK_FAILED: Error during plot evaluation
+    TASK_FAILED --> GOVERNED_RETRY: Fresh token issued with new Task ID & Nonce
+    CONSUMED --> REPLAY_REJECTED: Re-submitted with same replay_token
+```
+
+### 2. Thread Safety & Race-Condition Defense
+`DispatchVerifier.consume_replay_token()` executes inside a `threading.Lock()` critical section.
+- **Concurrent 10-Thread Race Test:** [`test_replay_store_concurrent_race_and_legitimate_retry`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py) executes 10 concurrent threads racing to consume the exact same token.
+- **Observed Result:** Exactly 1 thread successfully consumes the token; all 9 concurrent threads raise `DispatchAuthorizationFailedError: REPLAY_DETECTED`.
+- **Legitimate Task Retry Support:** When an evaluation fails, a retry attempt with a freshly issued capability token (with unique task ID and fresh replay token) succeeds.
+- **Capacity High-Water & Fail-Closed Guard:** When the in-memory token store exceeds 5,000 entries, it prunes expired tokens. If capacity remains exceeded, it fails closed with `DispatchAuthorizationFailedError: REPLAY_STORE_CAPACITY_EXCEEDED` rather than allowing unmonitored replays (verified by `test_replay_store_capacity_high_water_fail_closed`).
+
+### 3. Limitation Disclosure: Distributed Replay is `NOT_IMPLEMENTED`
+- **Process-Local Storage:** `CONSUMED_TOKENS` resides in heap memory of a single Python interpreter.
+- **Process Restart:** Replay history is cleared upon process restart.
+- **Multi-Node Topologies:** Separate worker instances or containers maintain isolated sets and cannot coordinate replay detection.
+- **Classification:** Distributed replay protection is formally classified as **`NOT_IMPLEMENTED`**. Production deployment requires an atomic external datastore (e.g. Redis `SET key value NX PX ttl` or PostgreSQL unique constraint).
+
+---
+
+## 6. Pre-Database Rejection Proof Across All 10 Conditions
+
+Verified via [`test_dispatch_authorization_rejection_pre_database_spies_all_10_conditions`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py):
+
+| # | Tested Condition | Test Input / Attack Vector | Error Raised | Session Checkout (`SessionLocal.call_count`) |
+| :-: | :--- | :--- | :--- | :-: |
+| **1** | Missing Authorization | `authorization=None` | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **2** | Invalid Capability Type | `authorization="invalid-string"` | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **3** | Direct Manual Construction | `DispatchAuthorization(...)` called directly | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **4** | Tampered Payload / Digest | Mutated payload attribute or corrupted digest | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **5** | Target Farm Mismatch | Token for Farm A presented for Farm B | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **6** | Task Purpose Mismatch | Token for `AD_HOC_SCAN` presented for `DAILY_RISKCAST` | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **7** | Environment Mismatch | Token for `development` presented in `test` | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **8** | Expired Capability Grant | `expires_at < now(utc)` | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **9** | Replayed Capability Token | Token submitted second time after consumption | `DispatchAuthorizationFailedError` | **`0 (BLOCKED)`** |
+| **10** | Production Guard Fail-Closed | `settings.ENVIRONMENT = "production"` | `ProductionDispatchBlockedError` | **`0 (BLOCKED)`** |
+
+---
+
+## 7. Test Suite Verification & Execution Evidence
+
+- **Total Phase 07 Tests:** **`97 passed, 1 warning`** across all 5 test files.
+- **Worker Security & Privacy Suite:** **`50 passed`** in `backend/tests/test_worker_security_and_privacy.py`.
+- **Optimized Python Mode Verification:**
+  ```powershell
+  $env:VIRTUAL_ENV = "$PWD\.venv"; $env:PYTHONPATH = "$PWD;$PWD\.venv\Lib\site-packages"; & C:\Users\gokul\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\python.exe -O -m pytest backend/tests/test_target_validation.py backend/tests/test_rls_offline_ddl.py backend/tests/test_rls_policy_semantics.py backend/tests/test_orm_rls_alignment.py backend/tests/test_worker_security_and_privacy.py
+  ```
+  Result: **`97 passed, 2 warnings in 13.11s`** (proving zero authorization guards rely on Python `assert`).
