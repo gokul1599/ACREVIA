@@ -1,4 +1,5 @@
 "use client";
+// ACREVIA Offline Indicator & Synchronization Banner Component
 
 import React, { useState, useEffect } from "react";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";

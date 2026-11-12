@@ -1,6 +1,6 @@
 /**
  * ACREVIA Vernacular PWA - IndexedDB Persistence Engine
- * Stage 06 Remediation (TASK-S06-01)
+ * Stage 06 Remediation (TASK-S06-01) & Continuous Quality Assurance
  *
  * Implements a versioned, resilient client-side storage engine using
  * browser IndexedDB with support for binary Blobs, transaction guarantees,

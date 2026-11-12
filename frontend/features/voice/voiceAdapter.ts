@@ -1,3 +1,4 @@
+// ACREVIA Vernacular Voice Interaction Adapter (Telugu, Hindi, Indian English)
 export type SpeechLocale = "te-IN" | "hi-IN" | "en-IN";
 
 interface SpeechRecognitionEvent {

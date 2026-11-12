@@ -1,3 +1,4 @@
+// ACREVIA Frontend Offline Persistence & Synchronization Automated Test Suite
 import test from "node:test";
 import assert from "node:assert";
 

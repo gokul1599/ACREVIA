@@ -1,6 +1,7 @@
 {
   "name": "acrevia-farmer-frontend",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "description": "ACREVIA Farmer Progressive Web Application (PWA) with Offline-First IndexedDB and Multilingual Support",
   "private": true,
   "type": "module",
   "scripts": {

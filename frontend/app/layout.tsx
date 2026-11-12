@@ -1,3 +1,4 @@
+// ACREVIA Root Layout - Progressive Web Application Shell (Telangana, India)
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { LocalizationProvider } from "@/lib/localization/context";

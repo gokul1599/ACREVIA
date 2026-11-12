@@ -1,4 +1,5 @@
 "use client";
+// ACREVIA Client Connectivity Hook
 
 import { useState, useEffect } from "react";
 
