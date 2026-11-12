@@ -3,6 +3,7 @@ ACREVIA - Regional Pulse & Intelligence Endpoints (ACREVIA Regional Pulse).
 Pillar F: Privacy-preserving regional signal aggregation, evidence verification, and outbreak claim suppression.
 """
 
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from backend.app.schemas.regional_pulse import (
 )
 from backend.app.security.dependencies import get_current_user
 from backend.app.services.regional_pulse_service import RegionalPulseService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/regional-pulse", tags=["ACREVIA Regional Pulse"])
 
@@ -58,6 +61,18 @@ def list_signals(
         if not is_privileged:
             sig_data.evidences = []
         results.append(sig_data)
+
+    # Transaction owner commits staged dynamic provenance updates
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to commit dynamic provenance revalidation in list_signals: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database transaction failure during regional pulse revalidation",
+        )
+
     return results
 
 
@@ -76,6 +91,17 @@ def get_signal(
 
     # Pre-read dynamic provenance revalidation: closes the stale-publication window
     is_valid = RegionalPulseService.revalidate_signal_provenance(db, sig.id)
+    # Transaction owner commits staged dynamic provenance update
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to commit dynamic provenance revalidation in get_signal: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database transaction failure during regional pulse revalidation",
+        )
+
     user_roles = [r.id for r in current_user.roles]
     is_privileged = any(r in ("ADMIN", "AGRICULTURAL_EXPERT", "RESEARCHER") for r in user_roles)
 

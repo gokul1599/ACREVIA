@@ -75,9 +75,13 @@ def compute_canonical_capability_payload(
     6. Task purpose
     7. Runtime environment
     8. Issued-at timestamp (ISO 8601 UTC)
-    9. Expiration timestamp (ISO 8601 UTC or 'NONE')
+    9. Expiration timestamp (ISO 8601 UTC - mandatory, strictly non-null)
     10. Replay token / nonce
     """
+    if not expires_at_iso or expires_at_iso == "NONE":
+        raise DispatchAuthorizationFailedError(
+            "MANDATORY_EXPIRATION_REQUIRED: Canonical capability payload requires valid ISO 8601 expiration timestamp."
+        )
     payload_dict = {
         "schema_version": schema_version,
         "issuer_id": issuer_id,
@@ -127,6 +131,14 @@ class DispatchAuthorization:
         if expires_at is None:
             raise DispatchAuthorizationFailedError(
                 "MANDATORY_EXPIRATION_REQUIRED: Capability must include an explicit expires_at timestamp."
+            )
+        if not isinstance(issued_at, datetime):
+            raise DispatchAuthorizationFailedError(
+                "INVALID_ISSUED_AT_TYPE: issued_at must be a datetime instance."
+            )
+        if not isinstance(expires_at, datetime):
+            raise DispatchAuthorizationFailedError(
+                "INVALID_EXPIRATION_TYPE: expires_at must be a datetime instance."
             )
         if issued_at.tzinfo is None:
             raise DispatchAuthorizationFailedError(
@@ -361,6 +373,14 @@ class DispatchVerifier:
             issued_at = now
             expires_at = now + timedelta(hours=1)
         else:
+            if not isinstance(expires_at, datetime):
+                raise DispatchAuthorizationFailedError(
+                    "INVALID_EXPIRATION_TYPE: expires_at must be a datetime instance."
+                )
+            if expires_at.tzinfo is None:
+                raise DispatchAuthorizationFailedError(
+                    "TIMEZONE_AWARE_EXPIRATION_REQUIRED: expires_at must be timezone-aware (UTC)."
+                )
             if expires_at <= now:
                 issued_at = expires_at - timedelta(hours=1)
             else:

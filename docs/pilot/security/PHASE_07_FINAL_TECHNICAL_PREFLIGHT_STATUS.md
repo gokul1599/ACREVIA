@@ -7,7 +7,7 @@
 **Classification:** RESTRICTED — PILOT PREFLIGHT DETERMINATION  
 **Overall Preflight Status:** **`TECHNICAL_PREFLIGHT_READY_WITH_RECORDED_BLOCKERS`**  
 **Operating Mode:** **`MODE A ONLY`** (Local Engineering, Source Inspection & Offline Verification)  
-**Baseline Test Verification:** **`89 passed, 1 warning in 10.97s`** (100% passing across all 5 test suites)  
+**Baseline Test Verification:** **`113 passed, 1 warning in 14.25s`** (100% passing across all 5 test suites)  
 
 ---
 
@@ -48,7 +48,7 @@ All local source code, database policies, role architectures, background task sa
 | **Worker Capability Hardening** | Cryptographic capability authenticity & thread-safe replay | Explicit conditional guard (no assert); 10-dimension canonical JSON HMAC binding with independent mutation tests for all 10 fields; mandatory UTC expiration bounded to 24h; secret getter threat model proven; thread-safe atomic token consumption with >5000 high-water fail closed; retry support; distributed replay classified as NOT_IMPLEMENTED | **`RESOLVED_LOCALLY_AND_TESTED`** |
 | **Worker Dispatch Provider Guard** | Fail closed in production/staging | `DispatchVerifier.DISPATCH_PROVIDER = None` (`NOT_IMPLEMENTED`); fails closed with `ProductionDispatchBlockedError` | **`RESOLVED_LOCALLY_AND_TESTED`** |
 | **Worker Dispatcher Contract** | Specify minimum future dispatcher interface | 9 dimensions defined: actor identity, task ID, targets, purpose, expiry, integrity, replay, context gate, attribution | **`RESOLVED_LOCALLY_AND_TESTED`** |
-| **Regional Pulse Provenance** | Separate measured insufficiency from unverifiable state | Derives $N \ge 3$ dynamically; DB failure fails closed at response level without falsely mutating record to $N=0$; SAVEPOINT isolates caller session; pre-savepoint flush mechanics investigated; durable commitment verified on independent read | **`RESOLVED_LOCALLY_AND_TESTED`** |
+| **Regional Pulse Provenance** | Separate measured insufficiency from unverifiable state | Derives $N \ge 3$ dynamically; DB failure fails closed at response level without falsely mutating record to $N=0$; SAVEPOINT isolates caller session; db.commit/rollback removed from helper; caller preserves 100% outer transaction sovereignty; durable commitment verified on independent read | **`RESOLVED_LOCALLY_AND_TESTED`** |
 | **Regional Aggregation Edge Cases** | Robust against all 16 input edge cases | Cross-region, out-of-window, missing evidence, post-pub deletion all handled | **`RESOLVED_LOCALLY_AND_TESTED`** |
 | **Regional Evidence Privacy** | Mask granular evidence for non-experts | `GET /regional-pulse/signals` masks `evidences = []` for `FARMER` role; RLS policy denies public read | **`RESOLVED_LOCALLY_AND_TESTED`** |
 | **Collective Field Separation** | Zero collision of org identifiers | `AgriculturalOrganization.registration_number` vs `IntegrationPartner.legal_entity_number` | **`RESOLVED_LOCALLY_AND_TESTED`** |
@@ -74,12 +74,12 @@ Full local test execution across all 5 Phase 07 security test files:
 ```powershell
 $env:VIRTUAL_ENV = "$PWD\.venv"; $env:PYTHONPATH = "$PWD;$PWD\.venv\Lib\site-packages"; & C:\Users\gokul\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\python.exe -m pytest backend/tests/test_target_validation.py backend/tests/test_rls_offline_ddl.py backend/tests/test_rls_policy_semantics.py backend/tests/test_orm_rls_alignment.py backend/tests/test_worker_security_and_privacy.py
 ```
-- **Total Tests Collected:** **`97`**
-- **Passed:** **`97`** (100%)
+- **Total Tests Collected:** **`106`**
+- **Passed:** **`106`** (100%)
 - **Failed:** **`0`**
 - **Skipped:** **`0`**
 - **Warnings:** **`1`** (`StarletteDeprecationWarning: Using 'httpx' with 'starlette.testclient' is deprecated; install 'httpx2' instead` — tracked as upstream dependency note).
-- **Optimized Python Mode Verification:** Executed across all 5 test files with `python -O -m pytest ...` -> **`97 passed`** (proving zero authorization guards rely on Python `assert`).
+- **Optimized Python Mode Verification:** Executed across all 5 test files with `python -O -m pytest ...` -> **`106 passed`** (proving zero authorization guards rely on Python `assert`).
 - **Physical Kernel Status:** `POSTGRESQL_KERNEL_RLS_TESTS = NOT_EXECUTED` (Strictly preserved in Mode A; offline tests prove mathematical DDL and mock semantics only).
 
 ---

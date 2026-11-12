@@ -78,6 +78,12 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
     response.headers["Permissions-Policy"] = "geolocation=(), camera=(self), microphone=(self)"
     if settings.ENVIRONMENT == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Regional Pulse Anti-Caching Guardrail: Prevent intermediate proxies/CDNs from caching dynamic suppression
+    if request.url.path.startswith("/api/v1/regional-pulse"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+
     return response
 
 

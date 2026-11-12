@@ -13,7 +13,7 @@
 - `TRANSACTION_SAFETY_AND_SAVEPOINT_ISOLATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`db.begin_nested()` SAVEPOINT prevents PostgreSQL 25P02 aborted-transaction state and protects caller's unrelated session work)  
 - `RIGOROUS_POSTGRESQL_CONCURRENCY_ANALYSIS`: **`DOCUMENTED_ANALYSIS`** (Accurate PostgreSQL semantics for READ COMMITTED, REPEATABLE READ, SERIALIZABLE, and FOR UPDATE)  
 - `ROLE_GLOBAL_EVIDENCE_ACCESS`: **`OWNER_ACCEPTANCE_REQUIRED`** (Global read access granted to `ADMIN`, `AGRICULTURAL_EXPERT`, `RESEARCHER`; requires Owner acceptance)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (50 passing tests; 97 across Phase 07 suite)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (66 passing tests; 113 across Phase 07 suite)  
 
 ---
 
@@ -73,6 +73,36 @@ Under SQLAlchemy ORM architecture, calling `db.begin_nested()` automatically tri
 2. **Savepoint Rollback Boundary:** When an error occurs inside `with db.begin_nested():`, the rollback operates only back to the savepoint (`ROLLBACK TO SAVEPOINT`). The pre-savepoint objects remain in the uncommitted outer transaction.
 3. **Session Commit / Rollback Consequences:** If the outer session subsequently calls `commit()`, the pre-savepoint flushed objects are permanently committed to the database. If the outer session calls `rollback()`, they are discarded.
 4. **Offline Proof:** Verified via [`test_sqlalchemy_begin_nested_presavepoint_flush_mechanics`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py), which empirically verifies that savepoint rollbacks do not discard caller objects flushed prior to the savepoint, and documents the architectural requirement for transaction boundary clarity in service helpers.
+
+### 4. Corrected Savepoint Contract & Transaction Boundary Sovereignty
+Prior implementation contained premature `db.commit()` and `db.rollback()` calls inside `revalidate_signal_provenance()`, which violated caller transaction sovereignty by prematurely committing or rolling back caller session work (including pre-savepoint uncommitted entities).
+
+Under the corrected architecture:
+1. **Helper Sovereignty Prohibition:** [`RegionalPulseService.revalidate_signal_provenance()`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/app/services/regional_pulse_service.py) strictly stages modifications (`signal.distinct_farms_count`, `signal.validation_status`) inside `with db.begin_nested():` and NEVER calls `db.commit()` or `db.rollback()`.
+2. **Caller Transaction Ownership:** The outer transaction is owned 100% by the caller (HTTP endpoint handlers `list_signals` and `get_signal` or background services). The caller explicitly decides when to issue `db.commit()` or `db.rollback()`.
+3. **Rollback Discard Proof:** If a caller aborts with `session.rollback()`, all staged dynamic suppression updates are discarded and never touch the database.
+4. **Fail-Closed Commit Enforcement:** If the caller's outer `db.commit()` encounters a database failure (e.g., connection disconnect, disk failure, transaction timeout), the endpoint executes `db.rollback()` and immediately raises `HTTPException(status_code=500)` (`HTTP_500_INTERNAL_SERVER_ERROR`). It **never** produces a success response (HTTP 200) on transaction failure.
+5. **Caller-by-Caller Audit Matrix:**
+
+| Caller / Site | Context / Scope | Outer Transaction Owner | Commit Path | Rollback Path | Early Return Behavior | Failure Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `RegionalPulseService.revalidate_signal_provenance` | Service Helper | **None** (Guest in Caller Session) | **Never** (`0` calls) | **Savepoint Only** (`ROLLBACK TO SAVEPOINT`) | Returns `False` (Response suppressed) | Preserved |
+| `GET /api/v1/regional-pulse/signals` | HTTP Endpoint (`list_signals`) | **FastAPI Request** (`Session`) | Explicit `db.commit()` | Explicit `db.rollback()` | Skips suppressed signal for non-privileged | Raises `500` |
+| `GET /api/v1/regional-pulse/signals/{id}` | HTTP Endpoint (`get_signal`) | **FastAPI Request** (`Session`) | Explicit `db.commit()` | Explicit `db.rollback()` | Raises `404` for non-privileged | Raises `500` |
+| Offline Unit & Integration Tests | Test Harness | **Test Case** (`Session`) | Explicit `session.commit()` | Explicit `session.rollback()` | N/A | Asserted |
+
+6. **Verification Evidence:**
+   - [`test_regional_pulse_savepoint_contract_no_caller_commit_or_rollback`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves zero `commit()` and zero `rollback()` calls during revalidation; unrelated caller work remains uncommitted until caller explicitly commits.
+   - [`test_regional_pulse_savepoint_caller_rollback_discards_staged_suppression`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves caller `rollback()` successfully discards staged suppression state.
+   - [`test_regional_pulse_endpoint_commit_failure_fails_closed`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves outer commit failure on GET endpoints triggers rollback and raises HTTP 500, never returning HTTP 200.
+   - [`test_regional_pulse_all_callers_obey_transaction_contract`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves via AST inspection that `revalidate_signal_provenance()` contains zero forbidden commit/rollback calls.
+   - [`test_regional_pulse_get_signal_successful_suppression_and_rbac`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves GET /signals/{id} returns 404 to farmers when N<3, returns 200 with unmasked evidence to admins, and commits suppression durably.
+   - [`test_regional_pulse_list_signals_successful_suppression_and_rbac`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves GET /signals filters out suppressed signals and masks evidence for farmers while returning all signals unmasked for admins, and commits suppression durably.
+   - [`test_regional_pulse_commit_failure_prevents_information_leak`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves commit failure returns generic 500 detail without leaking database passwords, IPs, or stack traces.
+   - [`test_regional_pulse_state_machine_monotonicity_and_recovery`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves 10-point state-machine monotonicity, Policy A fail-closed ordinary revalidation, Policy B authorized expert recovery, farm deduplication, and public/privileged response behavior.
+   - [`test_regional_pulse_http_cache_control_headers_enforced`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves Cache-Control and Pragma headers are strictly applied across all responses (200 list, 200 get, 404 suppressed, 404 missing, 500 commit failure) with zero conflicting directives.
+   - [`test_regional_pulse_concurrency_and_read_committed_scenarios`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves multi-session concurrency consistency under observation deletion, farm archival, concurrent revalidation, and persistence failure.
+   - [`test_regional_pulse_primary_write_routing_and_sqlstate_25006`](file:///c:/Users/gokul/OneDrive/Documents/projects/backend/tests/test_worker_security_and_privacy.py): Proves primary read-write engine binding and fail-closed rollback handling on simulated SQLSTATE 25006 (read-only pool).
 
 ---
 

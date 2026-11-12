@@ -7,7 +7,7 @@
 **Classification:** RESTRICTED — PILOT DATABASE POLICY AUDIT  
 **Operating Mode:** **`MODE A ONLY`** (Local Source Inspection & Offline Verification)  
 **Audit Determination:** **`RESOLVED_LOCALLY_AND_TESTED`**  
-**Associated Baseline Tests:** `backend/tests/test_target_validation.py` (12 passing tests), `backend/tests/test_rls_offline_ddl.py` (9 passing tests), `backend/tests/test_rls_policy_semantics.py` (14 passing tests), `backend/tests/test_orm_rls_alignment.py` (12 passing tests), `backend/tests/test_worker_security_and_privacy.py` (50 passing tests) — **Total: 97 passing tests across Phase 07 suite**  
+**Associated Baseline Tests:** `backend/tests/test_target_validation.py` (12 passing tests), `backend/tests/test_rls_offline_ddl.py` (9 passing tests), `backend/tests/test_rls_policy_semantics.py` (14 passing tests), `backend/tests/test_orm_rls_alignment.py` (12 passing tests), `backend/tests/test_worker_security_and_privacy.py` (55 passing tests) — **Total: 102 passing tests across Phase 07 suite**  
 
 ---
 

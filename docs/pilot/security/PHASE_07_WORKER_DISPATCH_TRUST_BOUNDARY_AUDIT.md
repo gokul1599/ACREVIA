@@ -19,7 +19,7 @@
 - `UNSCOPED_FALLBACK_QUERY_ELIMINATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`SELECT id FROM farms` completely removed; unbacked calls raise `ValueError`)  
 - `FUTURE_DISPATCHER_INTERFACE_CONTRACT`: **`DOCUMENTED_MINIMUM_SPECIFICATION`** (9 dimensions defined)  
 - `EXTERNAL_PRODUCTION_SCHEDULER`: **`NOT_IMPLEMENTED`** (Active integration blocker; no external message broker / queue provisioned)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (50 passing tests; 97 across Phase 07 suite; verified under `python -O`)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (55 passing tests; 102 across Phase 07 suite; verified under `python -O`)  
 
 ---
 
@@ -203,10 +203,10 @@ Verified via [`test_dispatch_authorization_rejection_pre_database_spies_all_10_c
 
 ## 7. Test Suite Verification & Execution Evidence
 
-- **Total Phase 07 Tests:** **`97 passed, 1 warning`** across all 5 test files.
-- **Worker Security & Privacy Suite:** **`50 passed`** in `backend/tests/test_worker_security_and_privacy.py`.
+- **Total Phase 07 Tests:** **`102 passed, 1 warning`** across all 5 test files.
+- **Worker Security & Privacy Suite:** **`55 passed`** in `backend/tests/test_worker_security_and_privacy.py`.
 - **Optimized Python Mode Verification:**
   ```powershell
   $env:VIRTUAL_ENV = "$PWD\.venv"; $env:PYTHONPATH = "$PWD;$PWD\.venv\Lib\site-packages"; & C:\Users\gokul\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\python.exe -O -m pytest backend/tests/test_target_validation.py backend/tests/test_rls_offline_ddl.py backend/tests/test_rls_policy_semantics.py backend/tests/test_orm_rls_alignment.py backend/tests/test_worker_security_and_privacy.py
   ```
-  Result: **`97 passed, 2 warnings in 13.11s`** (proving zero authorization guards rely on Python `assert`).
+  Result: **`102 passed, 2 warnings in 10.08s`** (proving zero authorization guards rely on Python `assert`).

@@ -9,7 +9,7 @@
 **Audit Determination:** **`PARTIALLY_RESOLVED`**  
 - `LOCAL_PRIVILEGE_SPECIFICATION`: **`RESOLVED_LOCALLY_AND_TESTED`**  
 - `LIVE_DATABASE_ACL_ENFORCEMENT`: **`BLOCKED_PENDING_LIVE_POSTGRESQL`** (Requires Gate 02/04 on live staging)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (`test_database_privileges_truncate_and_views_audit`, `test_132_tables_exact_crosswalk_set_equality`, `test_132_tables_privilege_crosswalk_exact_counts_and_no_blanket_dml`, `test_idempotent_privilege_grants_ddl_explicit_revokes` — 50 tests in suite, 97 across Phase 07)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (`test_database_privileges_truncate_and_views_audit`, `test_132_tables_exact_crosswalk_set_equality`, `test_132_tables_privilege_crosswalk_exact_counts_and_no_blanket_dml`, `test_idempotent_privilege_grants_ddl_explicit_revokes` — 55 tests in suite, 102 across Phase 07)  
 
 ---
 
@@ -288,3 +288,23 @@ Separating source inspection proof from live database catalog inspection:
 - **`LIVE_RELKIND_NOT_VERIFIED`:** Because remote database connections are strictly prohibited in Mode A, live catalog inspection via `pg_class.relkind = 'r'` has not been executed against PostgreSQL.
 - **`LIVE_PG_PROC_NOT_VERIFIED`:** Live inspection of `pg_proc.prosecdef` has not been executed against PostgreSQL.
 - **Requirement:** Catalog verification will execute via `scripts/verify_staging_rls.py` upon authorization of GATE-04 in Mode B.
+
+### 5. Sensitive Column Exposure & Row vs Column Confidentiality Audit
+An adversarial audit of all 132 database entities identified **21 tables** containing sensitive columns (passwords, phone numbers, email addresses, API secrets, tokens, village identifiers, traceback logs):
+- `users`: `phone`, `email`, `hashed_password`
+- `farms`: `village`
+- `expert_profiles`: `registration_number`
+- `agricultural_organizations`: `registration_number`, `contact_email`, `contact_phone`
+- `integration_partners`: `contact_email`, `contact_phone`
+- `api_credentials`: `hashed_secret`, `secret_prefix`
+- `sensor_devices`: `auth_token_hash`
+- `session_tokens`: `refresh_token_hash`
+- `webhook_endpoints`: `secret_hash`
+- `knowledge_documents` / `chunks` / `embeddings`: `token_count`, `content_hash`, `embedding`
+- `audit_logs`: `details`, `client_ip`, `user_id`
+
+#### Architectural Finding & Threat Classification:
+1. **Row-Level Security Boundary:** RLS filters *which rows* are visible under the query (`USING` clause). RLS does **not** filter or mask columns. Once a row satisfies the tenant policy, `SELECT *` returns all columns including sensitive fields.
+2. **Application DTO Projections:** Confidentiality of sensitive fields currently relies on FastAPI/Pydantic response models (`UserResponse`, `AgriculturalOrganizationResponse`) which mask or omit fields before sending HTTP responses.
+3. **Database-Level Risk:** If `acrevia_staging_app` executes unprojected `SELECT *`, it sees all columns of accessible rows.
+4. **Offline Proof:** Verified by unit test `test_adversarial_sensitive_columns_unrestricted_select_crosswalk`.
