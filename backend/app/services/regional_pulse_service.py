@@ -56,24 +56,49 @@ class RegionalPulseService:
         db: Session,
         data: RegionalSignalCreate,
         evidences: Optional[List[Dict[str, Any]]] = None,
+        actor_roles: Optional[List[str]] = None,
+        actor_id: Optional[str] = None,
+        auto_commit: bool = False,
     ) -> RegionalSignal:
         from backend.app.models.farm import Farm
         from backend.app.models.observation import Observation
         from backend.app.models.risk_alert import RiskAlert
+        from backend.app.services.audit_service import AuditService
+
+        # Authority Guardrail 0: Verify role-to-claim authorization matrix
+        # Fail-closed: missing actor_roles context defaults to empty roles
+        effective_roles = actor_roles if actor_roles is not None else []
+        if data.confidence_tier == "OFFICIAL_ADVISORY" and "ADMIN" not in effective_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Official state advisories can only be published by administrative authorities with verified source provenance.",
+            )
 
         # Check if evidences are provided either explicitly or via data model
         effective_evidences = evidences or getattr(data, "evidences", None)
 
         # Privacy & Reliability Guardrail 1: Enforce verified minimum distinct farms
         verified_distinct_farms = 0
+        valid_evidences_to_persist: List[Dict[str, Any]] = []
         if effective_evidences:
             verified_farm_ids = set()
+            seen_evidence_keys = set()
             for ev in effective_evidences:
-                ref_id = ev.get("evidence_reference_id")
-                ev_type = ev.get("evidence_type", "OBSERVATION_REF")
+                if isinstance(ev, dict):
+                    ref_id = ev.get("evidence_reference_id")
+                    ev_type = ev.get("evidence_type", "OBSERVATION_REF")
+                    notes = ev.get("evidence_notes")
+                else:
+                    ref_id = getattr(ev, "evidence_reference_id", None)
+                    ev_type = getattr(ev, "evidence_type", "OBSERVATION_REF")
+                    notes = getattr(ev, "evidence_notes", None)
+
                 if not ref_id:
                     continue
-                if ev_type == "OBSERVATION_REF":
+
+                ev_key = (ev_type, ref_id)
+
+                if ev_type in ("OBSERVATION_REF", "OBSERVATION"):
                     obs = db.get(Observation, ref_id)
                     if not obs or not obs.farm_id:
                         continue
@@ -90,6 +115,13 @@ class RegionalPulseService:
                         logger.warning(f"Excluding evidence {ref_id}: observation date {obs_date} outside window [{data.observed_start_date}, {data.observed_end_date}]")
                         continue
                     verified_farm_ids.add(farm.id)
+                    if ev_key not in seen_evidence_keys:
+                        seen_evidence_keys.add(ev_key)
+                        valid_evidences_to_persist.append({
+                            "evidence_type": "OBSERVATION_REF",
+                            "evidence_reference_id": ref_id,
+                            "evidence_notes": notes,
+                        })
 
                 elif ev_type in ("RISKCAST_ALERT", "RISK_ALERT"):
                     alert = db.get(RiskAlert, ref_id)
@@ -106,6 +138,16 @@ class RegionalPulseService:
                         logger.warning(f"Excluding alert evidence {ref_id}: alert date {alert_date} outside window [{data.observed_start_date}, {data.observed_end_date}]")
                         continue
                     verified_farm_ids.add(farm.id)
+                    if ev_key not in seen_evidence_keys:
+                        seen_evidence_keys.add(ev_key)
+                        valid_evidences_to_persist.append({
+                            "evidence_type": "RISK_ALERT",
+                            "evidence_reference_id": ref_id,
+                            "evidence_notes": notes,
+                        })
+                else:
+                    logger.warning(f"Excluding evidence {ref_id}: unsupported evidence type '{ev_type}'")
+                    continue
 
             verified_distinct_farms = len(verified_farm_ids)
             if verified_distinct_farms < MINIMUM_DISTINCT_FARMS_THRESHOLD:
@@ -133,14 +175,28 @@ class RegionalPulseService:
 
         final_distinct_count = verified_distinct_farms
 
+        # Count Derivation Guardrail: source observation count is server-derived from unique verified evidence records
+        if valid_evidences_to_persist:
+            final_source_obs_count = len(valid_evidences_to_persist)
+        else:
+            final_source_obs_count = 0
+
         # Anti-Panic Guardrail 2: Detect and suppress unverified sensational outbreak claims
         title_clean, suppressed_title = RegionalPulseService.sanitize_outbreak_language(data.signal_title)
         summary_clean, suppressed_summary = RegionalPulseService.sanitize_outbreak_language(data.signal_summary)
-        outbreak_suppressed = suppressed_title or suppressed_summary
+        action_clean, suppressed_action = RegionalPulseService.sanitize_outbreak_language(data.recommended_action)
+        outbreak_suppressed = suppressed_title or suppressed_summary or suppressed_action
 
-        # Only official state advisories or expert confirmed signals can bypass unvalidated status
-        validation_status = data.validation_status
-        if data.confidence_tier not in ("EXPERT_REVIEWED", "OFFICIAL_ADVISORY"):
+        # Server-enforced validation status lifecycle
+        if data.confidence_tier == "OFFICIAL_ADVISORY":
+            validation_status = "OFFICIAL_ALERT"
+        elif data.confidence_tier == "EXPERT_REVIEWED":
+            # Only AGRICULTURAL_EXPERT or ADMIN can confirm an expert review; researcher drafts and unattributed callers remain UNVALIDATED_OBSERVATION
+            if not any(r in ("AGRICULTURAL_EXPERT", "ADMIN") for r in effective_roles):
+                validation_status = "UNVALIDATED_OBSERVATION"
+            else:
+                validation_status = "EXPERT_CONFIRMED"
+        else:
             validation_status = "UNVALIDATED_OBSERVATION"
 
         signal = RegionalSignal(
@@ -151,29 +207,51 @@ class RegionalPulseService:
             signal_title=title_clean.strip(),
             signal_summary=summary_clean.strip(),
             confidence_tier=data.confidence_tier,
-            source_observation_count=data.source_observation_count,
+            source_observation_count=final_source_obs_count,
             distinct_farms_count=final_distinct_count,
             is_outbreak_claim_suppressed=outbreak_suppressed,
             validation_status=validation_status,
-            recommended_action=data.recommended_action.strip(),
+            recommended_action=action_clean.strip(),
             observed_start_date=data.observed_start_date,
             observed_end_date=data.observed_end_date,
         )
         db.add(signal)
         db.flush()
 
-        if effective_evidences:
-            for ev in effective_evidences:
+        if valid_evidences_to_persist:
+            for ev in valid_evidences_to_persist:
                 evidence_item = RegionalSignalEvidence(
                     signal_id=signal.id,
-                    evidence_type=ev.get("evidence_type", "OBSERVATION_REF"),
-                    evidence_reference_id=ev.get("evidence_reference_id", "REF-001"),
+                    evidence_type=ev["evidence_type"],
+                    evidence_reference_id=ev["evidence_reference_id"],
                     evidence_notes=ev.get("evidence_notes"),
                 )
                 db.add(evidence_item)
 
-        db.commit()
-        db.refresh(signal)
+        # Stage append-only AuditLog record atomically in caller's session
+        if actor_id:
+            AuditService.stage_activity(
+                db=db,
+                action="CREATE_REGIONAL_SIGNAL",
+                resource_type="REGIONAL_SIGNAL",
+                resource_id=signal.id,
+                user_id=actor_id,
+                metadata={
+                    "signal_id": signal.id,
+                    "district": signal.district,
+                    "crop_id": signal.crop_id,
+                    "confidence_tier": signal.confidence_tier,
+                    "validation_status": signal.validation_status,
+                    "distinct_farms_count": signal.distinct_farms_count,
+                    "source_observation_count": signal.source_observation_count,
+                    "is_outbreak_claim_suppressed": signal.is_outbreak_claim_suppressed,
+                },
+            )
+
+        if auto_commit:
+            db.commit()
+            db.refresh(signal)
+
         logger.info(
             "Aggregated regional signal %s for %s in %s (distinct_farms=%d, suppressed=%s)",
             signal.id,
@@ -264,7 +342,7 @@ class RegionalPulseService:
 
                 verified_farms = set()
                 for ev in signal.evidences:
-                    if ev.evidence_type == "OBSERVATION_REF":
+                    if ev.evidence_type in ("OBSERVATION_REF", "OBSERVATION"):
                         obs = db.get(Observation, ev.evidence_reference_id)
                         if not obs or not obs.farm_id:
                             continue
@@ -390,7 +468,7 @@ class RegionalPulseService:
         if evidences:
             # Level 3: Observation rows locked FOR SHARE in ascending order
             # Level 4: RiskAlert rows locked FOR SHARE in ascending order
-            obs_ids = sorted({ev.evidence_reference_id for ev in evidences if ev.evidence_type == "OBSERVATION_REF"})
+            obs_ids = sorted({ev.evidence_reference_id for ev in evidences if ev.evidence_type in ("OBSERVATION_REF", "OBSERVATION")})
             alert_ids = sorted({ev.evidence_reference_id for ev in evidences if ev.evidence_type in ("RISKCAST_ALERT", "RISK_ALERT")})
 
             observations = {}
@@ -435,7 +513,7 @@ class RegionalPulseService:
 
             # Post-lock recalculated provenance using freshly locked, populated records
             for ev in evidences:
-                if ev.evidence_type == "OBSERVATION_REF":
+                if ev.evidence_type in ("OBSERVATION_REF", "OBSERVATION"):
                     obs = observations.get(ev.evidence_reference_id)
                     if not obs or not obs.farm_id:
                         continue

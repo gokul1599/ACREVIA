@@ -27,11 +27,41 @@ router = APIRouter(prefix="/regional-pulse", tags=["ACREVIA Regional Pulse"])
 @router.post("/signals", response_model=RegionalSignalResponse, status_code=status.HTTP_201_CREATED)
 def aggregate_signal(
     data: RegionalSignalCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        require_roles(
+            SystemRole.ADMIN.value,
+            SystemRole.AGRICULTURAL_EXPERT.value,
+            SystemRole.RESEARCHER.value,
+        )
+    ),
     db: Session = Depends(get_db),
 ):
+    user_roles = [r.id for r in current_user.roles]
     evidences = getattr(data, "evidences", None)
-    return RegionalPulseService.aggregate_regional_signal(db, data=data, evidences=evidences)
+    signal = RegionalPulseService.aggregate_regional_signal(
+        db,
+        data=data,
+        evidences=evidences,
+        actor_roles=user_roles,
+        actor_id=current_user.id,
+        auto_commit=False,
+    )
+    is_privileged = any(r in ("ADMIN", "AGRICULTURAL_EXPERT", "RESEARCHER") for r in user_roles)
+    sig_data = RegionalSignalResponse.model_validate(signal)
+    if not is_privileged:
+        sig_data.evidences = []
+
+    try:
+        db.commit()
+        db.refresh(signal)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to commit regional signal in aggregate_signal: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database transaction failure during regional signal aggregation",
+        )
+    return sig_data
 
 
 @router.get("/signals", response_model=List[RegionalSignalResponse], status_code=status.HTTP_200_OK)

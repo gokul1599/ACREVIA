@@ -116,15 +116,28 @@ def test_research_consents_strict_privacy():
 
 
 def test_regional_signals_admin_only_write():
-    """Verify regional_signals enforces minimum farms threshold and can ONLY be modified by database admin."""
+    """
+    [RLS-TEST-ORACLE-01 RESOLUTION]
+    Verify regional_signals enforces minimum farms threshold (N >= 3) for public read,
+    and restricts write access to privileged roles (ADMIN, AGRICULTURAL_EXPERT, RESEARCHER)
+    or database admin bypass (ADMIN_BYPASS_SQL).
+    Explicitly checks both allowed roles and absent prohibited roles (e.g. FARMER).
+    """
     ddl = generate_rls_ddl("regional_signals", TableCategory.COMMUNITY_COLLABORATIVE)
     assert "ALTER TABLE regional_signals ENABLE ROW LEVEL SECURITY;" in ddl
     assert "ALTER TABLE regional_signals FORCE ROW LEVEL SECURITY;" in ddl
     assert "CREATE POLICY regional_signals_public_read_policy ON regional_signals" in ddl
     assert "distinct_farms_count >= 3" in ddl
     assert "CREATE POLICY regional_signals_author_write_policy ON regional_signals" in ddl
-    # Writes strictly require ADMIN_BYPASS_SQL (no ordinary user write access)
+    # 1. Database admin bypass present
     assert ADMIN_BYPASS_SQL in ddl
+    # 2. Privileged application roles explicitly permitted
+    assert "ur.role_id IN ('ADMIN', 'AGRICULTURAL_EXPERT', 'RESEARCHER')" in ddl
+    # 3. Ordinary tenant/farmer role strictly excluded from write allowlist
+    assert "'FARMER'" not in ddl
+    # 4. Enforces dual USING and WITH CHECK under FOR ALL
+    assert "AS PERMISSIVE\n    FOR ALL\n    TO PUBLIC" in ddl
+    assert "WITH CHECK" in ddl
 
 
 # ==============================================================================
@@ -309,7 +322,7 @@ def run_all_policy_semantics_tests():
         ("4. Community Collaborative: Author ID Equality Isolation", test_community_posts_author_isolation),
         ("5. Community Reports: Strict Reporter Privacy", test_community_reports_strict_privacy),
         ("6. Research Consents: Strict Farmer Privacy", test_research_consents_strict_privacy),
-        ("7. Regional Signals: Public Read & Admin-Only Write", test_regional_signals_admin_only_write),
+        ("7. Regional Signals: Public Read & Privileged Role Write", test_regional_signals_admin_only_write),
         ("8. Authentication: Context Established Before User Lookup", test_authentication_context_established_before_user_lookup),
         ("9. Authentication: Inactive User Clears Candidate Context", test_authentication_inactive_user_clears_context),
         ("10. Farm Access: Candidate Context Set Before Farm Lookup", test_farm_access_candidate_context_set_before_lookup),

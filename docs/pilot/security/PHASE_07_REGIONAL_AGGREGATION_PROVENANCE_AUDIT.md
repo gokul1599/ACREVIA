@@ -13,7 +13,7 @@
 - `TRANSACTION_SAFETY_AND_SAVEPOINT_ISOLATION`: **`RESOLVED_LOCALLY_AND_TESTED`** (`db.begin_nested()` SAVEPOINT prevents PostgreSQL 25P02 aborted-transaction state and protects caller's unrelated session work)  
 - `RIGOROUS_POSTGRESQL_CONCURRENCY_ANALYSIS`: **`DOCUMENTED_ANALYSIS`** (Accurate PostgreSQL semantics for READ COMMITTED, REPEATABLE READ, SERIALIZABLE, and FOR UPDATE)  
 - `ROLE_GLOBAL_EVIDENCE_ACCESS`: **`OWNER_ACCEPTANCE_REQUIRED`** (Global read access granted to `ADMIN`, `AGRICULTURAL_EXPERT`, `RESEARCHER`; requires Owner acceptance)  
-**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (74 passing tests; 121 across Phase 07 suite; 6 in Stage 12)  
+**Associated Baseline Tests:** `backend/tests/test_worker_security_and_privacy.py` (108 passing tests; 171 across Phase 07 suite; 6 in Stage 12; 171 under `python -O`)  
 
 ---
 
@@ -239,6 +239,38 @@ Ordinary public GET provenance dynamic revalidation (`RegionalPulseService.reval
   - Observability of row-level lock contention in `pg_locks` requires querying `wait_event_type = 'Lock'`, `locktype = 'tuple'` / `transactionid`, inspecting `pg_blocking_pids()`, or querying the `pgrowlocks(text)` contrib extension.
 
 ### 4. Residual Privacy Window Classification (RES-PULSE-02)
-- **Classification:** **`OWNER_ACCEPTANCE_REQUIRED`** (Status: `TECHNICALLY_BOUNDED`).
-- **Strategic Decision:** In accordance with Option E, row-level locks are strictly avoided on ordinary GET read traffic to maintain high concurrency, prevent lock contention, and enable future read-replica offloading. The residual stale read window under `READ COMMITTED` is operationally acceptable given subsequent fail-closed suppression and non-sensitive aggregated regional signal payload.
+- **Classification:** **`OWNER_ACCEPTANCE_REQUIRED`** (Status: `MEASURED_BUT_NOT_HARD_BOUNDED`).
+- **Strategic Decision:** In accordance with Option E, row-level locks are strictly avoided on ordinary GET read traffic to maintain high concurrency and prevent lock contention. The residual stale read window under `READ COMMITTED` is operationally acceptable given subsequent fail-closed suppression and non-sensitive aggregated regional signal payload.
+
+---
+
+## 10. Read-Replica Routing Reality, Cache Consistency Matrix & Empirical Privacy Latency Micro-Benchmark
+
+### 1. Read-Replica Routing Reality (`PRIMARY_ONLY_WRITE_ON_READ`)
+Dynamic provenance revalidation in `list_signals` and `get_signal` mutates signal status (`signal.validation_status = 'SUPPRESSED_INSUFFICIENT_PROVENANCE'`, `signal.distinct_farms_count = N`) on read when $N < 3$ and issues caller-owned `db.commit()`.
+- **Engine Architecture:** `backend/app/database/session.py` defines a single SQLAlchemy engine connected directly to the primary database. No secondary sessionmaker or read-replica connection router exists in the codebase.
+- **Standby Failure Mode:** If GET requests are routed to a PostgreSQL standby replica (`default_transaction_read_only = on`), write-on-read triggers `SQLSTATE 25006: cannot execute UPDATE in a read-only transaction`. The endpoint catches this, rolls back, and raises HTTP 500, failing closed and withholding the unverified signal.
+- **Architectural Classification:** **`PRIMARY_ONLY_WRITE_ON_READ`**.
+
+### 2. Cache Consistency Matrix
+- **Application In-Memory / Redis:** None configured on GET endpoints. Every request queries the database.
+- **Reverse Proxy / CDN:** Origin response enforces `Cache-Control: no-cache, no-store, must-revalidate` and `Pragma: no-cache` (`backend/app/main.py`). (`DEPLOYMENT_CONFIGURATION_NOT_VERIFIED` for CDN edge overrides).
+- **Service Worker:** `frontend/public/sw.js` explicitly passes `/api/` requests directly to network, bypassing the Cache API.
+- **Frontend Client:** Uses un-cached `fetch()` in `frontend/lib/api/client.ts`.
+- **Multi-Instance API Nodes:** Synchronized directly via primary database under `READ COMMITTED`. Once Node A commits suppression, Node B sees it on its next query.
+
+### 3. Empirical In-Process Privacy Latency Micro-Benchmark
+- **Benchmark Parameters:** 50 consecutive cycles measuring in-process revalidation, model validation, and response construction.
+- **Observed Latencies:**
+  - Provenance Revalidation: Min `4.25 ms`, Median `4.69 ms`, Max `13.99 ms`.
+  - Pydantic Model Validation: Min `0.08 ms`, Median `0.09 ms`, Max `12.00 ms`.
+  - Total Cycle: Min `4.47 ms`, Median `4.94 ms`, Max `26.25 ms`.
+- **Defensible Classification:** **`MEASURED_BUT_NOT_HARD_BOUNDED`**.
+- While execution time is ~5 ms in-process, OS thread scheduling, GC pauses, connection acquisition, and network transport cannot be bounded by a static constant in cloud environments.
+
+### 4. Field-Level Zero-PII Guarantee
+- All 17 fields in `RegionalSignalResponse` audited.
+- Granular evidence associations (`evidences`) unconditionally stripped to `[]` for non-privileged callers (`FARMER`).
+- Zero farmer names, phone numbers, email addresses, plot IDs, or GPS coordinates exposed.
+- Unauthenticated access rejected with HTTP 401.
 
