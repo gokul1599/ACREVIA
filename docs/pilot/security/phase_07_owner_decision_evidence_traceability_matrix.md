@@ -255,3 +255,15 @@ Authoritative definitions are restored across all governance dossiers:
 - `DB-RLS-01`: Infrastructure Blocker (Live PostgreSQL required).
 - `GATE01-PROV-01`: Release Gate Blocker.
 - **Phase 07 Status:** `NOT RELEASED`. Mode B: `STRICTLY NOT AUTHORIZED`.
+
+---
+
+## Dated Addendum — November 23, 2026: Registration Compatibility & Role Containment
+
+1. **Registration Dependency Identified:** Proved from `backend/app/services/auth_service.py` and `frontend/app/api/v1/auth/register/route.ts` that blanket revocation of `INSERT` on `user_roles` breaks all user onboarding (HTTP 500).
+2. **Containment Option E Endorsed:** Role provisioning during registration must transition to a secure stored function gateway (`register_default_user_role(p_user_id)`), hardcoded to `'FARMER'`, before runtime DML is revoked.
+3. **Unverified Role Self-Selection:** Highlighted that `UserRegisterRequest` currently accepts `role: "AGRICULTURAL_EXPERT"` and `role: "RESEARCHER"`, bypassing the administrative verification flow in `expert_service.py`.
+4. **Complete Traceability Reconciled:** All 78 tenant tables (25 direct + 53 indirect) and 13 user-owned tables fully cross-referenced in:
+   - [`PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md)
+   - [`PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md)
+

@@ -629,3 +629,14 @@ Authoritative definitions are restored across all governance dossiers:
 - `DB-RLS-01`: Infrastructure Blocker (Live PostgreSQL required).
 - `GATE01-PROV-01`: Release Gate Blocker.
 - **Phase 07 Status:** `NOT RELEASED`. Mode B: `STRICTLY NOT AUTHORIZED`.
+
+---
+
+## 13. Dated Addendum — November 23, 2026: Role Provisioning Gateway & Registration Safeguards
+
+1. **Option E Evaluation for User Registration:** Blanket revocation of `INSERT` on `user_roles` breaks onboarding. Option E (`SECURITY DEFINER` stored procedure `register_default_user_role`) must be deployed in migration `a1089411c87e` prior to DML revocation.
+2. **Cascading Account Deletion Threat:** Because foreign key cascade actions bypass RLS, direct `DELETE` on `users` must be revoked from `acrevia_staging_app` to prevent indirect wiping of role assignments.
+3. **Reference Deliverables:**
+   - [PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md)
+   - [PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md)
+

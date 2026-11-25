@@ -530,3 +530,24 @@ Authoritative definitions are restored across all governance dossiers:
 - `DB-RLS-01`: Infrastructure Blocker (Live PostgreSQL required).
 - `GATE01-PROV-01`: Release Gate Blocker.
 - **Phase 07 Status:** `NOT RELEASED`. Mode B: `STRICTLY NOT AUTHORIZED`.
+
+---
+
+## 13. Dated Addendum — November 23, 2026: User-Role Containment, Registration Compatibility & Tenant Policy Reconciliation
+
+### 1. Operational Conflict in Role DML Revocation
+A direct revocation of `INSERT` on `user_roles` without a gateway breaks user registration (`AuthService.register_user` in FastAPI and `/api/v1/auth/register` in Next.js). Both services write `user_roles` under `acrevia_staging_app`.
+
+### 2. Recommended Path: Option E (SECURITY DEFINER Gateway)
+Deploy a constrained stored procedure `register_default_user_role(p_user_id)` hardcoded to `'FARMER'` with zero `role_id` parameterization. Grant `EXECUTE` to `acrevia_staging_app` while revoking direct DML on `user_roles`.
+
+### 3. Open Registration Role Escalation
+`UserRegisterRequest` in `auth.py` accepts `AGRICULTURAL_EXPERT` and `RESEARCHER` directly from registrants, bypassing `expert_service.py` administrative verification. Registration schemas must be locked down to `FARMER` only.
+
+### 4. Referential Integrity Cascade Deletion
+`users` deletion cascades to `user_roles` via foreign key `ON DELETE CASCADE`, which bypasses RLS policies. Deleting user accounts must be segregated into administrative soft-delete workflows.
+
+### 5. Definitive Deliverables
+- [PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md)
+- [PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md)
+

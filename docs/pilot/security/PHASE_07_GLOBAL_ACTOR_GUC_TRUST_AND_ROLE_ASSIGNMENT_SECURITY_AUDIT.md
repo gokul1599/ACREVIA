@@ -549,3 +549,27 @@ $$\mathbf{DETERMINATION:\ TECHNICAL\_PREFLIGHT\_BLOCKED\_WITH\_RECORDED\_BLOCKER
 $$\mathbf{PHASE\ 07\ IS\ NOT\ RELEASED.}$$
 $$\mathbf{MODE\ B\ IS\ STRICTLY\ NOT\ AUTHORIZED.}$$
 $$\mathbf{ZERO\ APPLICATION\ SOURCE\ OR\ MIGRATION\ CODE\ MODIFIED.}$$
+
+---
+
+## 22. Dated Addendum — November 23, 2026: User-Role Containment, Registration Compatibility & Complete 78-Tenant Reconciliation
+
+### 1. Operational Registration Conflict Identification
+An adversarial review of `AuthService.register_user` (`backend/app/services/auth_service.py`) and Next.js onboarding routes (`frontend/app/api/v1/auth/register/route.ts`) proves that a naive blanket revocation of `INSERT` on `user_roles` from `acrevia_staging_app` causes immediate catastrophic failure (HTTP 500) for all user registrations. Role assignment during registration directly writes to `user_roles` under `acrevia_staging_app`.
+
+### 2. Unverified Role Self-Selection Vulnerability
+Both backend (`UserRegisterRequest`) and frontend schemas permit registrants to self-select `AGRICULTURAL_EXPERT` and `RESEARCHER` directly in the unauthenticated registration payload. This completely bypasses the administrative accreditation and verification workflow in `ExpertService.approve_or_reject_profile`.
+
+### 3. Referential Integrity Cascade Risk
+The foreign key `user_roles.user_id → users.id ON DELETE CASCADE` allows cascading role deletion if a user account is deleted. Because `acrevia_staging_app` possesses `GRANT DELETE ON TABLE users`, spoofing `app.current_user_id` allows an attacker to delete any user and wipe their roles without direct `DELETE` privileges on `user_roles`.
+
+### 4. Complete 78-Table Tenant Reconciliation
+All 25 direct tenant tables and 53 indirect tenant tables have been reconciled. Crucially, **0 out of 78 tables enforce independent user-membership verification in their PostgreSQL RLS policies.** All 78 tables exhibit `DIRECT_GUC_DEPENDENCY` or `INDIRECT_GUC_DEPENDENCY`.
+
+### 5. Recommended Containment: Option E (Stored Function Gateway)
+Direct DML on `user_roles` must be revoked from `acrevia_staging_app`, and registration must be transitioned to a secure `SECURITY DEFINER` stored procedure (`register_default_user_role(p_user_id)`), hardcoded to `'FARMER'` with zero caller parameterization. Privileged roles must be provisioned exclusively via administrative verification functions.
+
+### 6. Companion Governance Documents
+- Comprehensive Remediation Plan: [PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md)
+- Complete Traceability Matrix: [PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md)
+

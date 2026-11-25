@@ -36,6 +36,7 @@ All local source code, database policies, role architectures, background task sa
 | **`RES-FREE-TEXT-01`** | **MEDIUM** | Author Content & Privacy | Free-text fields (`signal_title`, `signal_summary`, `recommended_action`) are sanitized for panic vocabulary but lack automated PII redaction. Authors inputting personal farmer data will have it served publicly to farmers (`OWNER_ACCEPTANCE_REQUIRED`). | Project Owner formal acceptance requiring operational author publishing guidelines and administrative four-eyes review. |
 | **`GATE01-PROV-01`** | **MEDIUM** | Infrastructure Provenance | Neon staging branch `staging-rls-phase07` is recorded as provisioned in local artifacts, but cannot be independently validated via live cloud API in Mode A. | Independent verification of remote endpoint upon Mode B activation. |
 | **`RLS-WRITE-AUTH-01`** | **HIGH** | Database Policy Alignment | Generated RLS write policy allows `AGRICULTURAL_EXPERT` and `RESEARCHER` to write to `regional_signals` without status restrictions in `WITH CHECK`, rendering D-01 Option C unsafe without write-side hardening (`POLICY_DESIGN_UNSAFE`). | Owner determination on Decision D-01: implement Option B (separate table) or harden Option C with dedicated write policies. |
+| **`RLS-ROLE-ASSIGNMENT-01`** | **CRITICAL** | Authorization & Privilege Escalation | `user_roles` categorized as `USER_OWNED`, allowing users to self-assign `ADMIN` via mutable `app.current_user_id` session GUC under `acrevia_staging_app`. Revoking DML without replacement breaks user registration. | Deploy forward migration with `register_default_user_role` stored function gateway and revoke direct runtime DML. |
 | **`RLS-TEST-ORACLE-01`** | **LOW** | Test-Oracle Integrity | `test_regional_signals_admin_only_write()` formerly claimed an admin-only invariant while checking only `ADMIN_BYPASS_SQL`. | **RESOLVED LOCALLY:** Test docstring and assertions corrected to enforce actual allowlist (`ADMIN`, `AGRI_EXPERT`, `RESEARCHER`) and exclusion of `FARMER`. |
 
 ---
@@ -100,3 +101,14 @@ When the Project Owner signs off on Gates 02 through 05:
 2. **GATE-03 Activation:** Run Alembic migration `a1089411c87d` using `neondb_owner` to apply all 767 DDL statements.
 3. **GATE-04 Activation:** Execute `scripts/verify_staging_rls.py` to confirm catalog RLS flags (`pg_class`, `pg_policies`) and run cross-tenant CRUD probes.
 4. **GATE-05 Activation:** Schedule automated branch deprovisioning 24 hours post-verification.
+
+---
+
+## 6. Dated Addendum — November 23, 2026: Identity Audit & Role Management Containment
+
+1. **Blocker RLS-ROLE-ASSIGNMENT-01 Formalized:** Proven from local source that `user_roles` permits self-assignment of `ADMIN` by setting `app.current_user_id`.
+2. **Operational Registration Conflict:** Identified that direct revocation of `INSERT` on `user_roles` breaks onboarding; requires Option E (SECURITY DEFINER stored gateway `register_default_user_role`) before DML revocation.
+3. **Complete 78-Tenant Table Audit:** Confirmed all 78 tenant tables depend on caller GUCs; zero tables enforce independent database-layer membership checks.
+4. **Companion Deliverables:**
+   - Remediation Plan: [`PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_RLS_IDENTITY_REMEDIATION_AND_ROLE_MANAGEMENT_CONTAINMENT_PLAN.md)
+   - Traceability Matrix: [`PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md`](file:///c:/Users/gokul/OneDrive/Documents/projects/docs/pilot/security/PHASE_07_GLOBAL_GUC_AND_TENANT_POLICY_TRACEABILITY_MATRIX.md)
